@@ -1,3 +1,4 @@
+#include <faabric/state/FunctionState.h>
 #include <faabric/state/InMemoryStateKeyValue.h>
 #include <faabric/state/State.h>
 #include <faabric/state/StateServer.h>
@@ -6,10 +7,15 @@
 #include <faabric/util/config.h>
 #include <faabric/util/logging.h>
 #include <faabric/util/macros.h>
+#include <string>
 
 #define KV_FROM_REQUEST(request)                                               \
     auto kv = std::static_pointer_cast<InMemoryStateKeyValue>(                 \
       state.getKV(request.user(), request.key()));
+
+#define FS_FROM_REQUEST(request)                                               \
+    auto fs = std::static_pointer_cast<FunctionState>(                         \
+      state.getFS(request.user(), request.func(), request.parallelismid()));
 
 namespace faabric::state {
 StateServer::StateServer(State& stateIn)
@@ -51,6 +57,15 @@ std::unique_ptr<google::protobuf::Message> StateServer::doSyncRecv(
         }
         case faabric::state::StateCalls::Delete: {
             return recvDelete(message.udata());
+        }
+        case faabric::state::StateCalls::FunctionSize: {
+            return recvFunctionSize(message.udata());
+        }
+        case faabric::state::StateCalls::FunctionPull: {
+            return recvFunctionPull(message.udata());
+        }
+        case faabric::state::StateCalls::FunctionPush: {
+            return recvFunctionPush(message.udata());
         }
         default: {
             throw std::runtime_error(
@@ -188,4 +203,84 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvClearAppended(
     auto response = std::make_unique<faabric::StateResponse>();
     return response;
 }
+
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionSize(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::FunctionStateRequest, buffer.data(), buffer.size())
+
+    // Prepare the response
+    SPDLOG_TRACE("Received Function size {}/{}-{}",
+                 parsedMsg.user(),
+                 parsedMsg.func(),
+                 parsedMsg.parallelismid());
+    FS_FROM_REQUEST(parsedMsg)
+    auto response = std::make_unique<faabric::FunctionStateSizeResponse>();
+    response->set_user(fs->user);
+    response->set_func(fs->function);
+    response->set_parallelismid(fs->parallelismId);
+    response->set_statesize(fs->size());
+
+    return response;
+}
+
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPull(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::FunctionStateChunkRequest, buffer.data(), buffer.size())
+
+    SPDLOG_TRACE("Received pull {}/{}-{} ({}->{})",
+                 parsedMsg.user(),
+                 parsedMsg.func(),
+                 parsedMsg.parallelismid(),
+                 parsedMsg.offset(),
+                 parsedMsg.offset() + parsedMsg.chunksize());
+
+    // Write the response
+    FS_FROM_REQUEST(parsedMsg)
+    uint64_t chunkOffset = parsedMsg.offset();
+    uint64_t chunkLen = parsedMsg.chunksize();
+    uint8_t* chunk = fs->getChunk(chunkOffset, chunkLen);
+
+    auto response = std::make_unique<faabric::FunctionStatePart>();
+    response->set_user(parsedMsg.user());
+    response->set_func(parsedMsg.func());
+    response->set_parallelismid(parsedMsg.parallelismid());
+    response->set_offset(chunkOffset);
+    // TODO: avoid copying here
+    response->set_data(chunk, chunkLen);
+
+    return response;
+}
+
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPush(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::FunctionStatePart, buffer.data(), buffer.size())
+
+    // Update the FS store
+    SPDLOG_TRACE("Received push {}/{}-{} ({}->{})",
+                 parsedMsg.user(),
+                 parsedMsg.func(),
+                 parsedMsg.parallelismid(),
+                 parsedMsg.offset(),
+                 parsedMsg.offset() + parsedMsg.data().size());
+
+    FS_FROM_REQUEST(parsedMsg)
+
+    if (parsedMsg.offset() == 0) {
+        SPDLOG_TRACE("Resizing to the function state from {} to {} ",
+                     fs->size(),
+                     parsedMsg.statesize());
+        fs->reSize(parsedMsg.statesize());
+    }
+
+    fs->setChunk(parsedMsg.offset(),
+                 BYTES_CONST(parsedMsg.data().c_str()),
+                 parsedMsg.data().size());
+
+    auto response = std::make_unique<faabric::StateResponse>();
+    return response;
+}
+
 }

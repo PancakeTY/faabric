@@ -8,5 +8,7 @@
 namespace faabric::util {
 std::string keyForUser(const std::string& user, const std::string& key);
 
+std::string keyForFunction(const std::string& user, const std::string& func, size_t parallelismId);
+
 void maskDouble(unsigned int* maskArray, unsigned long idx);
 }

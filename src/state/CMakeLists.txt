@@ -7,6 +7,9 @@ faabric_lib(state
     StateKeyValue.cpp
     StateServer.cpp
     RedisStateKeyValue.cpp
+    FunctionState.cpp
+    FunctionStateRegistry.cpp
+    FunctionStateClient.cpp
 )
 
 target_link_libraries(state PRIVATE

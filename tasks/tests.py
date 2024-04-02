@@ -7,10 +7,10 @@ from tasks.util.env import FAABRIC_STATIC_BUILD_DIR, PROJ_ROOT
 IS_CI = "HOST_TYPE" in environ and environ["HOST_TYPE"] == "ci"
 
 TEST_ENV = {
-    "LOG_LEVEL": "info",
-    "PLANNER_HOST": "localhost",
-    "REDIS_QUEUE_HOST": "redis",
-    "REDIS_STATE_HOST": "redis",
+    "LOG_LEVEL": "trace",
+    "PLANNER_HOST": "planner",
+    "REDIS_QUEUE_HOST": "redis-queue",
+    "REDIS_STATE_HOST": "redis-state",
     "TERM": "xterm-256color",
     "ASAN_OPTIONS": "verbosity=1:halt_on_error=1:",
     "LSAN_OPTIONS": "suppressions={}/leak-sanitizer-ignorelist.txt".format(

@@ -14,6 +14,18 @@ std::string keyForUser(const std::string& user, const std::string& key)
     return fullKey;
 }
 
+std::string keyForFunction(const std::string& user, const std::string& func, size_t parallelismId)
+{
+    if (user.empty() || func.empty()) {
+        throw std::runtime_error(
+          fmt::format("Cannot have empty user or func ({}/{})", user, func));
+    }
+
+    std::string fullKey = user + "_" + func + "_" + std::to_string(parallelismId);
+
+    return fullKey;
+}
+
 void maskDouble(unsigned int* maskArray, unsigned long idx)
 {
     // We assume int is half size of double

@@ -36,6 +36,7 @@ void checkNngError(int ec, std::string_view label, std::string_view address)
                      address,
                      nng_strerror(ec),
                      ec);
+
         throw std::runtime_error(nng_strerror(ec));
     }
 }

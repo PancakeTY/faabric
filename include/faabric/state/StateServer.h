@@ -42,5 +42,14 @@ class StateServer final : public faabric::transport::MessageEndpointServer
 
     std::unique_ptr<google::protobuf::Message> recvDelete(
       std::span<const uint8_t> buffer);
+
+    std::unique_ptr<google::protobuf::Message> recvFunctionSize(
+      std::span<const uint8_t> buffer);
+
+    std::unique_ptr<google::protobuf::Message> recvFunctionPull(
+      std::span<const uint8_t> buffer);
+
+    std::unique_ptr<google::protobuf::Message> recvFunctionPush(
+      std::span<const uint8_t> buffer);
 };
 }

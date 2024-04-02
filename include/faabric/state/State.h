@@ -1,5 +1,6 @@
 #pragma once
 
+#include <faabric/state/FunctionState.h>
 #include <faabric/state/StateKeyValue.h>
 
 #include <shared_mutex>
@@ -18,6 +19,9 @@ enum StateCalls
     ClearAppended = 5,
     PullAppended = 6,
     Delete = 7,
+    FunctionSize = 8,
+    FunctionPull = 9,
+    FunctionPush = 10,
 };
 
 class State
@@ -44,14 +48,37 @@ class State
 
     std::string getThisIP();
 
+    // The folowing function is designed for Function State
+    size_t getFunctionStateSize(const std::string& user,
+                                const std::string& func,
+                                int32_t parallelismId);
+
+    std::shared_ptr<FunctionState> getFS(const std::string& user,
+                                         const std::string& func,
+                                         int32_t parallelismId,
+                                         size_t size);
+
+    std::shared_ptr<FunctionState> getFS(const std::string& user,
+                                         const std::string& func,
+                                         int32_t parallelismId);
+
   private:
     const std::string thisIP;
 
     std::unordered_map<std::string, std::shared_ptr<StateKeyValue>> kvMap;
+    std::unordered_map<std::string, std::shared_ptr<FunctionState>> fsMap;
+
     std::shared_mutex mapMutex;
+    std::shared_mutex fsmapMutex;
 
     std::shared_ptr<StateKeyValue> doGetKV(const std::string& user,
                                            const std::string& key,
+                                           bool sizeless,
+                                           size_t size);
+
+    std::shared_ptr<FunctionState> doGetFS(const std::string& user,
+                                           const std::string& func,
+                                           int32_t parallelismId,
                                            bool sizeless,
                                            size_t size);
 };

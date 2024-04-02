@@ -142,6 +142,10 @@ message Message {
     repeated int32 chainedMsgIds = 36;
     map<string, int32> intExecGraphDetails = 37;
     map<string, string> execGraphDetails = 38;
+
+    // State
+    // Hint the Parallelism Id of this task
+    int32 parallelismId = 99;
 }
 
 // ---------------------------------------------
@@ -231,4 +235,39 @@ message PendingMigration {
     int32 groupIdx = 3;
     string srcHost = 4;
     string dstHost = 5;
+}
+
+// ---------------------------------------------
+// FUNCTION STATE SERVICE
+// ---------------------------------------------
+
+message FunctionStateRequest {
+    string user = 1;
+    string func = 2;
+    uint32 parallelismId = 3;
+    bytes data = 4;
+}
+
+message FunctionStateSizeResponse {
+    string user = 1;
+    string func = 2;
+    uint32 parallelismId = 3;
+    uint64 stateSize = 4;
+}
+
+message FunctionStateChunkRequest {
+    string user = 1;
+    string func = 2;
+    uint32 parallelismId = 3;
+    uint64 offset = 4;
+    uint64 chunkSize = 5;
+}
+
+message FunctionStatePart {
+    string user = 1;
+    string func = 2;
+    uint32 parallelismId = 3;
+    uint64 offset = 4;
+    bytes data = 5;
+    uint32 stateSize = 6;
 }
