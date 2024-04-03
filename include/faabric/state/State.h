@@ -62,6 +62,11 @@ class State
                                          const std::string& func,
                                          int32_t parallelismId);
 
+    // In this function, it will return nullptr if no FunctionState is found.
+    std::shared_ptr<FunctionState> getOnlyFS(const std::string& user,
+                                             const std::string& func,
+                                             int32_t parallelismId);
+
   private:
     const std::string thisIP;
 

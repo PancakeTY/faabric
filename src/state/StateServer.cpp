@@ -14,8 +14,8 @@
       state.getKV(request.user(), request.key()));
 
 #define FS_FROM_REQUEST(request)                                               \
-    auto fs = std::static_pointer_cast<FunctionState>(                         \
-      state.getFS(request.user(), request.func(), request.parallelismid()));
+    auto fs = std::static_pointer_cast<FunctionState>(state.getOnlyFS(         \
+      request.user(), request.func(), request.parallelismid()));
 
 namespace faabric::state {
 StateServer::StateServer(State& stateIn)
@@ -215,12 +215,21 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionSize(
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
     FS_FROM_REQUEST(parsedMsg)
+    // TODO - delete redis key and return 0
+    if (fs == nullptr || !fs->isMaster) {
+        SPDLOG_ERROR("Function state {}/{}-{} is not found or not master",
+                     parsedMsg.user(),
+                     parsedMsg.func(),
+                     parsedMsg.parallelismid());
+        throw std::runtime_error("StateServer receive size request, but state "
+                                 "is not found or not master");
+    }
+    // Prepare the response
     auto response = std::make_unique<faabric::FunctionStateSizeResponse>();
     response->set_user(fs->user);
     response->set_func(fs->function);
     response->set_parallelismid(fs->parallelismId);
     response->set_statesize(fs->size());
-
     return response;
 }
 
@@ -235,9 +244,17 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPull(
                  parsedMsg.parallelismid(),
                  parsedMsg.offset(),
                  parsedMsg.offset() + parsedMsg.chunksize());
-
     // Write the response
     FS_FROM_REQUEST(parsedMsg)
+    // TODO - delete redis key and return 0
+    if (fs == nullptr || !fs->isMaster) {
+        SPDLOG_ERROR("Function state {}/{}-{} is not found or not master",
+                     parsedMsg.user(),
+                     parsedMsg.func(),
+                     parsedMsg.parallelismid());
+        throw std::runtime_error("StateServer receive size request, but state "
+                                 "is not found or not master");
+    }
     uint64_t chunkOffset = parsedMsg.offset();
     uint64_t chunkLen = parsedMsg.chunksize();
     uint8_t* chunk = fs->getChunk(chunkOffset, chunkLen);
@@ -246,6 +263,7 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPull(
     response->set_user(parsedMsg.user());
     response->set_func(parsedMsg.func());
     response->set_parallelismid(parsedMsg.parallelismid());
+    response->set_statesize(fs->size());
     response->set_offset(chunkOffset);
     // TODO: avoid copying here
     response->set_data(chunk, chunkLen);
@@ -267,7 +285,15 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPush(
                  parsedMsg.offset() + parsedMsg.data().size());
 
     FS_FROM_REQUEST(parsedMsg)
-
+    // TODO - delete redis key and return 0
+    if (fs == nullptr || !fs->isMaster) {
+        SPDLOG_ERROR("Function state {}/{}-{} is not found or not master",
+                     parsedMsg.user(),
+                     parsedMsg.func(),
+                     parsedMsg.parallelismid());
+        throw std::runtime_error("StateServer receive size request, but state "
+                                 "is not found or not master");
+    }
     if (parsedMsg.offset() == 0) {
         SPDLOG_TRACE("Resizing to the function state from {} to {} ",
                      fs->size(),

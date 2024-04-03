@@ -36,5 +36,13 @@ struct PlannerState
 
     // Helper coutner of the total number of migrations
     std::atomic<int> numMigrations = 0;
+
+    // Register the current parallelism of each function
+    std::map<std::string, int> functionParallelism;
+
+    // Register Partitioned Function State
+    // Function name : Function Input partitionBy
+    std::map<std::string, std::string> funcionPartitionedBy;
+    
 };
 }

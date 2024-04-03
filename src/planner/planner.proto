@@ -122,3 +122,7 @@ message AvailableHostsResponse {
     repeated Host hosts = 1;
 }
 
+message RegisterFunctionStateResponse {
+    ResponseStatus status = 1;
+}
+

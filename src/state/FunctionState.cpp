@@ -36,6 +36,7 @@ FunctionState::FunctionState(const std::string& userIn,
     if (hostIp == masterIp) {
         isMaster = true;
     }
+    // If stateSizeIn is not set, the configure has to be called later.
     if (stateSizeIn > 0) {
         configureSize();
     }
@@ -62,17 +63,16 @@ void FunctionState::configureSize()
     size_t nHostPages = getRequiredHostPages(stateSize);
     sharedMemSize = nHostPages * HOST_PAGE_SIZE;
     sharedMemory = nullptr;
-
-    // dirtyMask = std::make_unique<uint8_t[]>(stateSize);
-    // zeroDirtyMask();
-
-    // pulledMask = std::make_unique<uint8_t[]>(stateSize);
-    // ::memset(pulledMask.get(), 0, stateSize);
 }
 
 size_t FunctionState::size() const
 {
     return stateSize;
+}
+
+void FunctionState::setPartitionKey(std::string key)
+{
+    partitionKey = key;
 }
 
 void FunctionState::clearAll(bool global)
@@ -115,26 +115,20 @@ void FunctionState::set(const uint8_t* buffer)
     // Unique lock for setting the whole value
     FullLock lock(stateMutex);
     doSet(buffer);
-    isDirty = true;
 }
 
 void FunctionState::reSize(long length)
 {
     checkSizeConfigured();
-    // If new length is bigger than the reserved size, reallocate it.
-    if (length <= stateSize) {
-        return;
-    }
     stateSize = length;
+    // If new length is bigger than the reserved size, reallocate it.
     FullLock lock(stateMutex);
-    // If the new length does not exceed the reserved size.
     if (length > sharedMemSize) {
         fullyAllocated = false;
-        // If the new length exceeds the reserved size.
         SPDLOG_DEBUG(
           "The new length is bigger than the reserved size, reallocate it.");
         // If the sharedMemory is created, but not initialized, the shared
-        // memory == nullptr
+        // memory is null. In FunctionState, sizeless intialize is not allowed.
         if (sharedMemory != nullptr) {
             if (munmap(sharedMemory, sharedMemSize) == -1) {
                 SPDLOG_ERROR("Failed to unmap shared memory: {}",
@@ -146,39 +140,14 @@ void FunctionState::reSize(long length)
         configureSize();
     }
     allocateChunk(0, sharedMemSize);
-    // Make sure we flag that this value has now been set
-    fullyPulled = true;
-    isDirty = true;
 }
 
 void FunctionState::set(const uint8_t* buffer, long length)
 {
-    checkSizeConfigured();
-    // If new length is bigger than the reserved size, reallocate it.
-    stateSize = length;
-    FullLock lock(stateMutex);
-    // If the new length does not exceed the reserved size.
-    if (length > sharedMemSize) {
-        fullyAllocated = false;
-        // If the new length exceeds the reserved size.
-        SPDLOG_DEBUG(
-          "The new length is bigger than the reserved size, reallocate it.");
-        // If the sharedMemory is created, but not initialized, the shared
-        // memory == nullptr
-        if (sharedMemory != nullptr) {
-            if (munmap(sharedMemory, sharedMemSize) == -1) {
-                SPDLOG_ERROR("Failed to unmap shared memory: {}",
-                             strerror(errno));
-                throw std::runtime_error("Failed unmapping memory for FS");
-            }
-            sharedMemory = nullptr;
-        }
-        configureSize();
-    }
+    reSize(length);
     doSet(buffer);
-    isDirty = true;
     if (!isMaster) {
-        // pushToRemote();
+        pushToRemote();
     }
 }
 
@@ -277,9 +246,6 @@ void FunctionState::doSet(const uint8_t* buffer)
 
     // Copy data into shared region
     std::copy(buffer, buffer + stateSize, BYTES(sharedMemory));
-
-    // Make sure we flag that this value has now been set
-    fullyPulled = true;
 }
 
 void FunctionState::pushToRemote()
@@ -292,41 +258,31 @@ void FunctionState::pushToRemote()
     cli.pushChunks(allChunks, stateSize);
 }
 
+// Only the Master node can return its data, otherwise pull at first.
 void FunctionState::get(uint8_t* buffer)
 {
-    doPull(true);
+    doPull();
 
     SharedLock lock(stateMutex);
     auto bytePtr = BYTES(sharedMemory);
     std::copy(bytePtr, bytePtr + stateSize, buffer);
 }
 
-void FunctionState::doPull(bool lazy)
+// In our function, doPull is called to retrive the data from the master node.
+void FunctionState::doPull()
 {
-    checkSizeConfigured();
-
-    // Drop out if we already have the data and we don't care about updating
-    {
-        faabric::util::SharedLock lock(stateMutex);
-        if (lazy && isMaster) {
-            return;
-        }
-    }
-
-    // Unique lock on the whole value
-    faabric::util::FullLock lock(stateMutex);
-
-    // Check again if we need to do this
-    if (lazy && isMaster) {
+    if (isMaster) {
         return;
     }
-
+    checkSizeConfigured();
+    // Unique lock on the whole value
+    faabric::util::FullLock lock(stateMutex);
+    size_t updatedSize =
+      getStateSizeFromRemote(user, function, parallelismId, hostIp);
     // Make sure storage is allocated
-    allocateChunk(0, sharedMemSize);
-
+    reSize(updatedSize);
     // Do the pull
     pullFromRemote();
-    fullyPulled = true;
 }
 
 void FunctionState::pullFromRemote()

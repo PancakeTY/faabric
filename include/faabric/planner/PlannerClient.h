@@ -98,6 +98,12 @@ class PlannerClient final : public faabric::transport::MessageEndpointClient
     void preloadSchedulingDecision(
       std::shared_ptr<faabric::batch_scheduler::SchedulingDecision> preloadDec);
 
+    // ------
+    // Function State calls
+    // ------
+
+    void registerFunctionState(std::shared_ptr<faabric::FunctionStateRegister> req);
+
   private:
     std::mutex plannerCacheMx;
     PlannerCache cache;

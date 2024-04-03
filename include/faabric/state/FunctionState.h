@@ -29,6 +29,7 @@ class FunctionState
                                          int parallelismIdIn,
                                          const std::string& thisIPIn);
     size_t size() const;
+    void setPartitionKey(std::string key);
     void set(const uint8_t* buffer);
     void set(const uint8_t* buffer, long length);
     void reSize(long length);
@@ -54,14 +55,11 @@ class FunctionState
     const std::string hostIp;
     // The master IP is the IP of the master node
     const std::string masterIp;
+    // the key of keyValue with is partition state which is not partition input.
+    std::string partitionKey;
     std::atomic<bool> fullyAllocated = false;
-    std::atomic<bool> fullyPulled = false;
-    // std::unique_ptr<uint8_t[]> pulledMask = nullptr;
-    // std::unique_ptr<uint8_t[]> dirtyMask = nullptr;
-    bool isDirty = false;
-    size_t sharedMemSize;
+    size_t sharedMemSize = 0;
     void* sharedMemory = nullptr;
-
     std::unordered_map<std::string, std::vector<uint8_t>> state;
     // Configure the Size of State by using Chunks.
     void checkSizeConfigured();
@@ -73,7 +71,7 @@ class FunctionState
 
     void doSet(const uint8_t* data);
     void pushToRemote();
-    void doPull(bool lazy);
+    void doPull();
     void pullFromRemote();
 };
 

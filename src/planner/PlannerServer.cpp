@@ -70,6 +70,9 @@ std::unique_ptr<google::protobuf::Message> PlannerServer::doSyncRecv(
         case PlannerCalls::CallBatch: {
             return recvCallBatch(message.udata());
         }
+        case PlannerCalls::RegisterFunctionState: {
+            return recvFunctionStateRegister(message.udata());
+        }
         default: {
             // If we don't recognise the header, let the client fail, but don't
             // crash the planner
@@ -246,4 +249,28 @@ std::unique_ptr<google::protobuf::Message> PlannerServer::recvCallBatch(
 
     return std::make_unique<faabric::PointToPointMappings>(mappings);
 }
+
+std::unique_ptr<google::protobuf::Message>
+PlannerServer::recvFunctionStateRegister(std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(FunctionStateRegister, buffer.data(), buffer.size());
+    std::string partitionBy = "";
+    if (parsedMsg.isparition()) {
+        partitionBy = parsedMsg.pinputkey();
+    }
+    std::string funcName = parsedMsg.user() + "_" + parsedMsg.func();
+    bool success = planner.registerFunctionState(funcName, partitionBy);
+    // Prepare response
+    auto response =
+      std::make_unique<faabric::planner::RegisterFunctionStateResponse>();
+    ResponseStatus status;
+    if (success) {
+        status.set_status(ResponseStatus_Status_OK);
+    } else {
+        status.set_status(ResponseStatus_Status_ERROR);
+    }
+    *response->mutable_status() = status;
+    return response;
+}
+
 }

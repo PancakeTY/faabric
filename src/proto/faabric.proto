@@ -271,3 +271,11 @@ message FunctionStatePart {
     bytes data = 5;
     uint32 stateSize = 6;
 }
+
+message FunctionStateRegister{
+    string user = 1;
+    string func = 2;
+    bool isParition = 3;
+    string pInputKey = 4;
+    string pStateKey = 5;
+}

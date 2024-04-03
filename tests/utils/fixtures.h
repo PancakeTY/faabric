@@ -661,4 +661,37 @@ class BatchSchedulerFixture : public ConfFixture
         REQUIRE(decisionA.groupIdxs == decisionB.groupIdxs);
     }
 };
+
+class PlannerClientServerConfFixture : public ConfFixture
+{
+public:
+    PlannerClientServerConfFixture()
+        : conf(initializeConfiguration()),
+          plannerCli(faabric::planner::getPlannerClient()),
+          plannerServer()
+    {
+        plannerServer.start();
+        plannerCli.ping();
+    }
+
+    ~PlannerClientServerConfFixture()
+    {
+        plannerServer.stop();
+        faabric::planner::getPlanner().reset();
+    }
+
+protected:
+    faabric::util::SystemConfig& conf;
+    faabric::planner::PlannerClient& plannerCli;
+    faabric::planner::PlannerServer plannerServer;
+
+private:
+    static faabric::util::SystemConfig& initializeConfiguration() {
+        auto& cfg = faabric::util::getSystemConfig();
+        cfg.plannerHost = LOCALHOST;
+        cfg.logLevel = "TRACE";
+        // Additional configuration setup
+        return cfg;
+    }
+};
 }

@@ -188,8 +188,6 @@ std::string State::getThisIP()
     return thisIP;
 }
 
-
-
 size_t State::getFunctionStateSize(const std::string& user,
                                    const std::string& func,
                                    int32_t parallelismId)
@@ -204,7 +202,7 @@ size_t State::getFunctionStateSize(const std::string& user,
     // See if we have the value locally
     {
         faabric::util::SharedLock sharedLock(fsmapMutex);
-        if (fsMap.count(lookupKey) > 0) {
+        if (fsMap.count(lookupKey) > 0 && fsMap[lookupKey]->isMaster) {
             return fsMap[lookupKey]->size();
         }
     }
@@ -213,13 +211,46 @@ size_t State::getFunctionStateSize(const std::string& user,
     FullLock fullLock(fsmapMutex);
 
     // Double check
-    if (fsMap.count(lookupKey) > 0) {
+    if (fsMap.count(lookupKey) > 0 && fsMap[lookupKey]->isMaster) {
         return fsMap[lookupKey]->size();
     }
 
     // Get from remote
     return FunctionState::getStateSizeFromRemote(
       user, func, parallelismId, thisIP);
+}
+
+std::shared_ptr<FunctionState> State::getOnlyFS(const std::string& user,
+                                            const std::string& func,
+                                            int32_t parallelismId)
+{
+    if (user.empty() || func.empty()) {
+        throw std::runtime_error(fmt::format(
+          "Attempting to access state with empty user or key ({}/{})",
+          user,
+          func));
+    }
+
+    std::string lookupKey =
+      faabric::util::keyForFunction(user, func, parallelismId);
+
+    // See if we have locally
+    {
+        SharedLock sharedLock(fsmapMutex);
+        if (fsMap.count(lookupKey) > 0) {
+            return fsMap[lookupKey];
+        }
+    }
+
+    // Full lock
+    FullLock fullLock(fsmapMutex);
+
+    // Double check condition
+    if (fsMap.count(lookupKey) > 0) {
+        return fsMap[lookupKey];
+    }
+
+    return nullptr;
 }
 
 std::shared_ptr<FunctionState> State::getFS(const std::string& user,
@@ -279,9 +310,11 @@ std::shared_ptr<FunctionState> State::doGetFS(const std::string& user,
     // Passing IP here is crucial for testing
     if (sizeless) {
         // Sizeless is used for pointer, we don't design it for now
-        auto fs =
-          std::make_shared<FunctionState>(user, func, parallelismId, thisIP);
-        fsMap.emplace(lookupKey, std::move(fs));
+        // auto fs =
+        //   std::make_shared<FunctionState>(user, func, parallelismId, thisIP);
+        // fsMap.emplace(lookupKey, std::move(fs));
+        throw FunctionStateException(
+          "Cannot create a new function state without size" + lookupKey);
     } else {
         auto fs = std::make_shared<FunctionState>(
           user, func, parallelismId, thisIP, size);

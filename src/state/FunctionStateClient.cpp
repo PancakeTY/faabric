@@ -41,7 +41,7 @@ size_t FunctionStateClient::stateSize()
 // TODO - Lock the data during pull and push
 
 void FunctionStateClient::pullChunks(const std::vector<StateChunk>& chunks,
-                             uint8_t* bufferStart)
+                                     uint8_t* bufferStart)
 {
     logRequest("functionstate-pull-chunks");
 
@@ -62,10 +62,12 @@ void FunctionStateClient::pullChunks(const std::vector<StateChunk>& chunks,
         std::copy(response.data().begin(),
                   response.data().end(),
                   bufferStart + response.offset());
+        // TODO - refine the size increase in pullChunks
     }
 }
 
-void FunctionStateClient::pushChunks(const std::vector<StateChunk>& chunks, uint32_t stateSize)
+void FunctionStateClient::pushChunks(const std::vector<StateChunk>& chunks,
+                                     uint32_t stateSize)
 {
     logRequest("functionstate-push-chunks");
 
