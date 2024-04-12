@@ -93,8 +93,9 @@ class Planner
     // Function State public API
     // ----------
 
-    bool registerFunctionState(const std::string& funcName,
-                               const std::string& partitionBy);
+    bool registerFunctionState(const std::string& function,
+                               const std::string& host,
+                               const std::string& partitionBy = "");
 
   private:
     // There's a singleton instance of the planner running, but it must allow

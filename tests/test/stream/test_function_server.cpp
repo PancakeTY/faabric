@@ -74,7 +74,7 @@ class SimpleFunctionStateServerTestFixture
 
 TEST_CASE_METHOD(SimpleFunctionStateServerTestFixture,
                  "Test function state request/ response",
-                 "[functionstate]")
+                 "[functionserverstate]")
 {
     std::vector<uint8_t> actual(dataA.size(), 0);
 

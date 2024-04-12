@@ -26,6 +26,13 @@ class FunctionStateClient : public faabric::transport::MessageEndpointClient
     void pullChunks(const std::vector<StateChunk>& chunks,
                     uint8_t* bufferStart);
 
+    void rePartitionState(const std::string& newStateHost);
+
+    void addPartitionState(const std::string& pstatekey,
+                           const std::vector<uint8_t>& data);
+
+    void combineParState();
+
   private:
     // void sendStateRequest(faabric::state::FunctionStateCalls header,
     //                       const uint8_t* data,

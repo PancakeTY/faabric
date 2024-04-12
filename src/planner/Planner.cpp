@@ -821,25 +821,22 @@ void Planner::dispatchSchedulingDecision(
                  req->messages_size());
 }
 
-bool Planner::registerFunctionState(const std::string& funcName,
+bool Planner::registerFunctionState(const std::string& function,
+                                    const std::string& host,
                                     const std::string& partitionBy)
 {
-    SPDLOG_TRACE("Planner received request to register function state {}",
-                 funcName);
+    SPDLOG_TRACE(
+      "Planner received request to register function state {} from host {}",
+      function,
+      host);
     if (!partitionBy.empty()) {
         SPDLOG_TRACE("Partitioned function state, partitioned by {}",
                      partitionBy);
     }
     faabric::util::FullLock lock(plannerMx);
-    // Double check if the function is already registered.
-    // The default parallelism is 1
-    if (state.functionParallelism.count(funcName) == 0) {
-        state.functionParallelism[funcName] = 1;
-    }
-    if (!partitionBy.empty()) {
-        state.funcionPartitionedBy[funcName] = partitionBy;
-    }
-    return true;
+    auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
+    bool result = batchScheduler->registerState(function, host, partitionBy);
+    return result;
 }
 
 Planner& getPlanner()

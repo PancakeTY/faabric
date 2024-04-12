@@ -1,5 +1,6 @@
 #include <faabric/batch-scheduler/BatchScheduler.h>
 #include <faabric/batch-scheduler/BinPackScheduler.h>
+#include <faabric/batch-scheduler/StateAwareScheduler.h>
 #include <faabric/util/config.h>
 #include <faabric/util/logging.h>
 
@@ -20,6 +21,8 @@ std::shared_ptr<BatchScheduler> getBatchScheduler()
 
     if (mode == "bin-pack") {
         batchScheduler = std::make_shared<BinPackScheduler>();
+    } else if (mode == "state-aware") {
+        batchScheduler = std::make_shared<StateAwareScheduler>();
     } else {
         SPDLOG_ERROR("Unrecognised batch scheduler mode: {}", mode);
         throw std::runtime_error("Unrecognised batch scheduler mode");
@@ -48,5 +51,15 @@ DecisionType BatchScheduler::getDecisionType(
     }
 
     return DecisionType::SCALE_CHANGE;
+}
+
+// RegisterState is used by state-aware scheduler to allocate function according
+// to the state position. Other shceduler will not use this function.
+bool BatchScheduler::registerState(const std::string& function,
+                                   const std::string& host,
+                                   const std::string& partitionBy)
+{
+    SPDLOG_WARN("BatchScheduler::registerState not implemented");
+    return true;
 }
 }

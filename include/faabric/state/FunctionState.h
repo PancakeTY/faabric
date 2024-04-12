@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <faabric/state/FunctionStateRegistry.h>
 #include <faabric/state/StateKeyValue.h>
+#include <map>
+#include <set>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -40,11 +42,16 @@ class FunctionState
     uint8_t* getChunk(long offset, long len);
     static uint32_t waitOnRedisRemoteLockFunc(const std::string& redisKey);
     static void clearAll(bool global);
-
+    // After receiving the repartition request from planner, it send its
+    // partition state to other state server.
+    // return false means this function state is no longer used.
+    bool rePartitionState(const std::string& newStateHost);
+    void addTempParState(const uint8_t* buffer, size_t length);
+    bool combineParState();
     const std::string user;
     const std::string function;
     // the default parallelism ID is 0
-    const int parallelismId;
+    int parallelismId;
     bool isMaster = false;
 
   private:
@@ -73,6 +80,12 @@ class FunctionState
     void pushToRemote();
     void doPull();
     void pullFromRemote();
+    std::map<std::string, std::vector<uint8_t>> getStateMap();
+    // It parsed the partition state from the sharedmemory space
+    std::map<std::string, std::vector<uint8_t>> getParStateMap();
+    // It added the partition state to the temp state. After the instruction
+    // from the planner, it will be added to the state.
+    std::set<std::vector<uint8_t>> tempParState;
 };
 
 class FunctionStateException : public std::runtime_error

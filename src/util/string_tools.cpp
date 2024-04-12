@@ -56,4 +56,22 @@ bool stringIsInt(const std::string& input)
     return !input.empty() &&
            input.find_first_not_of("0123456789") == std::string::npos;
 }
+
+std::tuple<std::string, std::string, std::string> splitUserFuncPar(const std::string& input) {
+    // Find the positions of the underscores
+    size_t firstUnderscorePos = input.find('_');
+    size_t secondUnderscorePos = input.find('_', firstUnderscorePos + 1);
+    
+    // Check if underscores were found
+    if (firstUnderscorePos == std::string::npos || secondUnderscorePos == std::string::npos) {
+        throw std::invalid_argument("Input string format is incorrect.");
+    }
+    
+    // Extract the substrings based on the positions of the underscores
+    std::string part1 = input.substr(0, firstUnderscorePos);
+    std::string part2 = input.substr(firstUnderscorePos + 1, secondUnderscorePos - firstUnderscorePos - 1);
+    std::string part3 = input.substr(secondUnderscorePos + 1);
+    
+    return std::make_tuple(part1, part2, part3);
+}
 }

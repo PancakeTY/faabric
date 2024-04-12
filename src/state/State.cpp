@@ -221,8 +221,8 @@ size_t State::getFunctionStateSize(const std::string& user,
 }
 
 std::shared_ptr<FunctionState> State::getOnlyFS(const std::string& user,
-                                            const std::string& func,
-                                            int32_t parallelismId)
+                                                const std::string& func,
+                                                int32_t parallelismId)
 {
     if (user.empty() || func.empty()) {
         throw std::runtime_error(fmt::format(
@@ -309,12 +309,10 @@ std::shared_ptr<FunctionState> State::doGetFS(const std::string& user,
     // Create new FS
     // Passing IP here is crucial for testing
     if (sizeless) {
-        // Sizeless is used for pointer, we don't design it for now
-        // auto fs =
-        //   std::make_shared<FunctionState>(user, func, parallelismId, thisIP);
-        // fsMap.emplace(lookupKey, std::move(fs));
-        throw FunctionStateException(
-          "Cannot create a new function state without size" + lookupKey);
+        // Currrently, sizeless is used when reparition
+        auto fs =
+          std::make_shared<FunctionState>(user, func, parallelismId, thisIP);
+        fsMap.emplace(lookupKey, std::move(fs));
     } else {
         auto fs = std::make_shared<FunctionState>(
           user, func, parallelismId, thisIP, size);
@@ -324,4 +322,25 @@ std::shared_ptr<FunctionState> State::doGetFS(const std::string& user,
     return fsMap[lookupKey];
 }
 
+void State::deleteFS(const std::string& user,
+                     const std::string& func,
+                     int32_t parallelismId)
+{
+    if (user.empty() || func.empty()) {
+        throw std::runtime_error(fmt::format(
+          "Attempting to access state with empty user or key ({}/{})",
+          user,
+          func));
+    }
+
+    std::string lookupKey =
+      faabric::util::keyForFunction(user, func, parallelismId);
+
+    FullLock fullLock(fsmapMutex);
+    if (fsMap.count(lookupKey) > 0) {
+        fsMap.erase(lookupKey);
+    } else {
+        SPDLOG_WARN("Function state {} not found for deletion", lookupKey);
+    }
+}
 }

@@ -22,6 +22,10 @@ enum StateCalls
     FunctionSize = 8,
     FunctionPull = 9,
     FunctionPush = 10,
+    FunctionRepartition = 11,
+    // Add the new partitioned function state data
+    FunctionParAdd = 12,
+    FunctionParCombine = 13,
 };
 
 class State
@@ -66,6 +70,10 @@ class State
     std::shared_ptr<FunctionState> getOnlyFS(const std::string& user,
                                              const std::string& func,
                                              int32_t parallelismId);
+
+    void deleteFS(const std::string& user,
+                  const std::string& func,
+                  int32_t parallelismId);
 
   private:
     const std::string thisIP;

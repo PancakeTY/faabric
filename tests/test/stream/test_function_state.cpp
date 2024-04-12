@@ -5,6 +5,7 @@
 
 #include <faabric/redis/Redis.h>
 #include <faabric/state/FunctionState.h>
+#include <faabric/state/FunctionStateClient.h>
 #include <faabric/state/InMemoryStateKeyValue.h>
 #include <faabric/state/State.h>
 #include <faabric/state/StateServer.h>
@@ -21,67 +22,34 @@ using namespace faabric::state;
 
 namespace tests {
 
-class StateServerTestFixture
+class FunctionStateServerTestFixture
   : public StateFixture
   , public ConfFixture
 {
   public:
     // Set up a local server with a *different* state instance to the main
     // thread. This way we can fake the main/ non-main setup
-    StateServerTestFixture()
+    FunctionStateServerTestFixture()
       : remoteState(LOCALHOST)
       , stateServer(remoteState)
     {
         // Start the state server
-        SPDLOG_DEBUG("Running state server");
+        SPDLOG_DEBUG("Running state server on {}", LOCALHOST);
         stateServer.start();
     }
 
-    ~StateServerTestFixture() { stateServer.stop(); }
-
-    void setDummyData(std::vector<uint8_t> data)
-    {
-        dummyData = data;
-
-        // Master the dummy data in the "remote" state
-        if (!dummyData.empty()) {
-            std::string originalHost = conf.endpointHost;
-            conf.endpointHost = LOCALHOST;
-
-            const std::shared_ptr<state::StateKeyValue>& kv =
-              remoteState.getKV(dummyUser, dummyKey, dummyData.size());
-
-            std::shared_ptr<InMemoryStateKeyValue> inMemKv =
-              std::static_pointer_cast<InMemoryStateKeyValue>(kv);
-
-            // Check this kv "thinks" it's main
-            if (!inMemKv->isMaster()) {
-                SPDLOG_ERROR("Dummy state server not main for data");
-                throw std::runtime_error("Dummy state server failed");
-            }
-
-            // Set the data
-            kv->set(dummyData.data());
-            SPDLOG_DEBUG(
-              "Finished setting main for test {}/{}", kv->user, kv->key);
-
-            conf.endpointHost = originalHost;
-        }
-    }
+    ~FunctionStateServerTestFixture() { stateServer.stop(); }
 
   protected:
-    std::string dummyUser;
-    std::string dummyKey;
-
     state::State remoteState;
     state::StateServer stateServer;
 
   private:
-    std::vector<uint8_t> dummyData;
 };
 
 // Testing for read size and write locally
-TEST_CASE_METHOD(StateFixture, "Test function state sizes", "[functionstate]")
+TEST_CASE_METHOD(StateFixture, "Test function state sizes",
+"[functionstate]")
 {
     std::string user = "stream";
     std::string function = "beta";
@@ -216,4 +184,110 @@ TEST_CASE_METHOD(StateFixture,
     REQUIRE(state.getFunctionStateSize(user, function, parallelism) ==
             stateSize);
 }
+
+// test for repartition state
+TEST_CASE_METHOD(FunctionStateServerTestFixture,
+                 "Test function state repartition (no existing before)",
+                 "[functionstate]")
+{
+    std::string user = "stream";
+    std::string function = "beta";
+    int parallelism = 0;
+
+    // Write a function State
+    std::string parKey = "kp";
+    std::vector<uint8_t> k1 = { 1, 2, 3, 4, 5 };
+    std::vector<uint8_t> k2 = { 2, 3, 4, 5, 6, 7, 8 };
+    std::map<std::string, std::vector<uint8_t>> functionParState;
+    functionParState["pp1"] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+    functionParState["pp2"] = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+    functionParState["pp3"] = { 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+    functionParState["pp4"] = { 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 };
+    functionParState["pp5"] = { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
+    functionParState["pp6"] = { 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+    functionParState["pp7"] = { 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    functionParState["pp8"] = { 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
+    std::vector<uint8_t> functionParStateBytes =
+      faabric::util::serializeParState(functionParState);
+
+    std::map<std::string, std::vector<uint8_t>> functionState =
+      std::map<std::string, std::vector<uint8_t>>();
+    functionState["k1"] = k1;
+    functionState["k2"] = k2;
+    functionState[parKey] = functionParStateBytes;
+
+    std::vector<uint8_t> functionStateBytes =
+      faabric::util::serializeFuncState(functionState);
+    size_t stateSize = functionStateBytes.size();
+    auto fs = state.getFS(user, function, parallelism, stateSize);
+
+    // Set the function state and partition Key
+    fs->set(functionStateBytes.data(), stateSize);
+    fs->setPartitionKey(parKey);
+
+    std::shared_ptr<std::map<std::string, std::string>> newFilteredStateHost =
+      std::make_shared<std::map<std::string, std::string>>();
+    newFilteredStateHost->emplace("stream_beta_0", faabric::util::getSystemConfig().endpointHost);
+    newFilteredStateHost->emplace("stream_beta_1", "127.0.0.1");
+    std::vector<uint8_t> tmpStateHost =
+      faabric::util::serializeMapBinary(*newFilteredStateHost);
+    std::string newFilteredStateHostStr(tmpStateHost.begin(),
+                                        tmpStateHost.end());
+    // Register in Redis
+    faabric::redis::Redis& redis = redis::Redis::getState();
+    std::string mainKey = "main_steam_beta_1";
+    std::vector<uint8_t> mainIPBytes =
+      faabric::util::stringToBytes("127.0.0.1");
+    redis.set(mainKey, mainIPBytes);
+
+    // Repartition the state
+    fs->rePartitionState(newFilteredStateHostStr);
+
+    // combineParState
+    fs->combineParState();
+    FunctionStateClient stateClient(user, function, 1, "127.0.0.1");
+    stateClient.combineParState();
+
+    // Read the function state
+    size_t stateSize1 = fs->size();
+    std::vector<uint8_t> readData1(stateSize1);
+    fs->get(readData1.data());
+    std::map<std::string, std::vector<uint8_t>> functionState1 =
+      std::map<std::string, std::vector<uint8_t>>();
+    functionState1["k1"] = k1;
+    functionState1["k2"] = k2;
+    std::map<std::string, std::vector<uint8_t>> functionParState1;
+    functionParState1["pp1"] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+    functionParState1["pp3"] = { 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+    functionParState1["pp5"] = { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
+    functionParState1["pp7"] = { 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    std::vector<uint8_t> functionParStateBytes1 =
+      faabric::util::serializeParState(functionParState1);
+    functionState1["k1"] = k1;
+    functionState1["k2"] = k2;
+    functionState1[parKey] = functionParStateBytes1;
+    std::vector<uint8_t> compare1 = faabric::util::serializeFuncState(
+      functionState1); // compare1 is the expected value
+    
+    REQUIRE(compare1 == readData1);
+
+    size_t stateSize2 = remoteState.getFS(user, function, 1, 0)->size();
+    std::vector<uint8_t> readData2(stateSize2);
+    remoteState.getFS(user, function, 1, stateSize2)->get(readData2.data());
+
+    std::map<std::string, std::vector<uint8_t>> functionState2 =
+      std::map<std::string, std::vector<uint8_t>>();
+    std::map<std::string, std::vector<uint8_t>> functionParState2;
+    functionParState2["pp2"] = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+    functionParState2["pp4"] = { 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 };
+    functionParState2["pp6"] = { 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+    functionParState2["pp8"] = { 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
+    std::vector<uint8_t> functionParStateBytes2 =
+      faabric::util::serializeParState(functionParState2);
+    functionState2[parKey] = functionParStateBytes2;
+    std::vector<uint8_t> compare2 = faabric::util::serializeFuncState(
+      functionState2); // compare2 is the expected value
+    REQUIRE(compare2 == readData2);
+}
+
 }

@@ -67,6 +67,15 @@ std::unique_ptr<google::protobuf::Message> StateServer::doSyncRecv(
         case faabric::state::StateCalls::FunctionPush: {
             return recvFunctionPush(message.udata());
         }
+        case faabric::state::StateCalls::FunctionRepartition: {
+            return recvFunctionRepartition(message.udata());
+        }
+        case faabric::state::StateCalls::FunctionParAdd: {
+            return recvFunctionParAdd(message.udata());
+        }
+        case faabric::state::StateCalls::FunctionParCombine: {
+            return recvFunctionParCombine(message.udata());
+        }
         default: {
             throw std::runtime_error(
               fmt::format("Unrecognized state call header: {}", header));
@@ -305,6 +314,69 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPush(
                  BYTES_CONST(parsedMsg.data().c_str()),
                  parsedMsg.data().size());
 
+    auto response = std::make_unique<faabric::StateResponse>();
+    return response;
+}
+
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionRepartition(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::FunctionStateRepartition, buffer.data(), buffer.size())
+
+    // Prepare the response
+    SPDLOG_TRACE("Received Function repartition {}/{}-{}",
+                 parsedMsg.user(),
+                 parsedMsg.func(),
+                 parsedMsg.parallelismid());
+
+    FS_FROM_REQUEST(parsedMsg)
+    bool result = fs->rePartitionState(parsedMsg.newparitionmap());
+    if (!result) {
+        state.deleteFS(
+          parsedMsg.user(), parsedMsg.func(), parsedMsg.parallelismid());
+    }
+    // No information is needed by response
+    auto response = std::make_unique<faabric::StateResponse>();
+    return response;
+}
+
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionParAdd(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::FunctionStateAdd, buffer.data(), buffer.size())
+
+    // Prepare the response
+    SPDLOG_TRACE("Received Function partitioned state add {}/{}-{}",
+                 parsedMsg.user(),
+                 parsedMsg.func(),
+                 parsedMsg.parallelismid());
+    FS_FROM_REQUEST(parsedMsg)
+    // fs might be nullptr if the function state is not found.
+    if (fs == nullptr) {
+        fs = state.getFS(parsedMsg.user(),
+                         parsedMsg.func(),
+                         parsedMsg.parallelismid());
+        fs->setPartitionKey(parsedMsg.pstatekey());
+    }
+    auto reqData = BYTES_CONST(parsedMsg.data().c_str());
+    // Add data in tmp position to avoid locking.
+    fs->addTempParState(reqData, parsedMsg.data().size());
+    // No information is needed by response
+    auto response = std::make_unique<faabric::StateResponse>();
+    return response;
+}
+
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionParCombine(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::FunctionStateRequest, buffer.data(), buffer.size())
+    SPDLOG_TRACE("Received Function partitioned combined request {}/{}-{}",
+                 parsedMsg.user(),
+                 parsedMsg.func(),
+                 parsedMsg.parallelismid());
+    FS_FROM_REQUEST(parsedMsg)
+    fs->combineParState();
+    // No information is needed by response
     auto response = std::make_unique<faabric::StateResponse>();
     return response;
 }

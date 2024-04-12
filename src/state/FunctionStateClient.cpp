@@ -84,4 +84,44 @@ void FunctionStateClient::pushChunks(const std::vector<StateChunk>& chunks,
     }
 }
 
+void FunctionStateClient::rePartitionState(const std::string& newStateHost)
+{
+    logRequest("functionstate-repartition-state");
+    faabric::FunctionStateRepartition request;
+    request.set_user(user);
+    request.set_func(func);
+    request.set_parallelismid(parallelismId);
+    request.set_newparitionmap(newStateHost);
+    faabric::EmptyResponse resp;
+    syncSend(faabric::state::StateCalls::FunctionRepartition, &request, &resp);
+}
+
+void FunctionStateClient::addPartitionState(const std::string& pstatekey,
+                                            const std::vector<uint8_t>& data)
+{
+
+    // stateChunk.set_data(chunk.data, chunk.length);
+
+    logRequest("functionstate-addpartition-state");
+    faabric::FunctionStateAdd request;
+    request.set_user(user);
+    request.set_func(func);
+    request.set_parallelismid(parallelismId);
+    request.set_pstatekey(pstatekey);
+    request.set_data(data.data(), data.size());
+    faabric::EmptyResponse resp;
+    syncSend(faabric::state::StateCalls::FunctionParAdd, &request, &resp);
+}
+
+void FunctionStateClient::combineParState()
+{
+    logRequest("functionstate-combineParState");
+    faabric::FunctionStateRequest request;
+    request.set_user(user);
+    request.set_func(func);
+    request.set_parallelismid(parallelismId);
+    faabric::EmptyResponse resp;
+    syncSend(faabric::state::StateCalls::FunctionParCombine, &request, &resp);
+}
+
 }

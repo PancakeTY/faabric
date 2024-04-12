@@ -259,7 +259,8 @@ PlannerServer::recvFunctionStateRegister(std::span<const uint8_t> buffer)
         partitionBy = parsedMsg.pinputkey();
     }
     std::string funcName = parsedMsg.user() + "_" + parsedMsg.func();
-    bool success = planner.registerFunctionState(funcName, partitionBy);
+    std::string host = parsedMsg.host();
+    bool success = planner.registerFunctionState(funcName, host, partitionBy);
     // Prepare response
     auto response =
       std::make_unique<faabric::planner::RegisterFunctionStateResponse>();

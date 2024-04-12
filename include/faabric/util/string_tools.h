@@ -34,4 +34,6 @@ std::string vectorToString(std::vector<T> vec)
 
     return ss.str();
 }
+
+std::tuple<std::string, std::string, std::string> splitUserFuncPar(const std::string& input);
 }

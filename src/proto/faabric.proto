@@ -275,7 +275,23 @@ message FunctionStatePart {
 message FunctionStateRegister{
     string user = 1;
     string func = 2;
-    bool isParition = 3;
-    string pInputKey = 4;
-    string pStateKey = 5;
+    string host = 3;
+    bool isParition = 4;
+    string pInputKey = 5;
+    string pStateKey = 6;
+}
+
+message FunctionStateRepartition{
+    string user = 1;
+    string func = 2;
+    uint32 parallelismId = 3;
+    string newParitionMap = 4;
+}
+
+message FunctionStateAdd{
+    string user = 1;
+    string func = 2;
+    uint32 parallelismId = 3;
+    string pStateKey = 4;
+    bytes data = 5;
 }

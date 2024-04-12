@@ -4,6 +4,8 @@
 #include <faabric/util/logging.h>
 #include <faabric/util/macros.h>
 #include <faabric/util/memory.h>
+#include <faabric/util/serialization.h>
+#include <faabric/util/string_tools.h>
 #include <faabric/util/timing.h>
 #include <sys/mman.h>
 
@@ -119,8 +121,8 @@ void FunctionState::set(const uint8_t* buffer)
 
 void FunctionState::reSize(long length)
 {
-    checkSizeConfigured();
     stateSize = length;
+    checkSizeConfigured();
     // If new length is bigger than the reserved size, reallocate it.
     FullLock lock(stateMutex);
     if (length > sharedMemSize) {
@@ -332,6 +334,126 @@ uint8_t* FunctionState::getChunk(long offset, long len)
         throw FunctionStateException("Requested chunk is out of bounds");
     }
     return BYTES(sharedMemory) + offset;
+}
+
+std::map<std::string, std::vector<uint8_t>> FunctionState::getStateMap()
+{
+    SharedLock lock(stateMutex);
+    if (stateSize == 0 || sharedMemory == nullptr) {
+        return std::map<std::string, std::vector<uint8_t>>();
+    }
+    auto bytePtr = BYTES(sharedMemory);
+    std::vector<uint8_t> stateVector(bytePtr, bytePtr + stateSize);
+    std::map<std::string, std::vector<uint8_t>> stateMap =
+      faabric::util::deserializeFuncState(stateVector);
+    return stateMap;
+}
+
+std::map<std::string, std::vector<uint8_t>> FunctionState::getParStateMap()
+{
+    std::map<std::string, std::vector<uint8_t>> stateMap = getStateMap();
+    std::map<std::string, std::vector<uint8_t>> parStateMap =
+      faabric::util::deserializeParState(stateMap[partitionKey]);
+    return parStateMap;
+}
+
+bool FunctionState::rePartitionState(const std::string& newStateHost)
+{
+    if (!isMaster) {
+        throw FunctionStateException("Only master can repartition state");
+    }
+    std::vector<uint8_t> tempStateVec(newStateHost.begin(), newStateHost.end());
+    std::map<std::string, std::string> newStateMap =
+      faabric::util::deserializeMapBinary(tempStateVec);
+    // If the parallelismId is changed
+    int newParallel = newStateMap.size();
+    int newParallelismId = -1;
+    // need to get the new parallelism Id of this host. (start from 0).
+    // need to get the new parallelism Id for all the hosts.
+    std::map<int, std::string> parToHost;
+    std::map<std::string, int> hostToPar;
+    for (auto& [userFuncParIdx, tmpHost] : newStateMap) {
+        auto [tmpUser, tmpFunction, tmpParallelismId] =
+          faabric::util::splitUserFuncPar(userFuncParIdx);
+        // Register the new parallelism Id for all the hosts.
+        parToHost[std::atoi(tmpParallelismId.c_str())] = tmpHost;
+        hostToPar[tmpHost] = std::atoi(tmpParallelismId.c_str());
+        if (tmpHost != hostIp) {
+            continue;
+        }
+        // If the parallelismId is changed, record it.
+        newParallelismId = std::atoi(tmpParallelismId.c_str());
+    }
+    // For the paritioned stateful key, reculculate their master.
+    std::map<std::string, std::vector<uint8_t>> parState = getParStateMap();
+    // record the partitioned key-value needed transferred to other hosts and
+    // the key-value stored locally.
+    std::map<std::string, std::map<std::string, std::vector<uint8_t>>>
+      dataTransfer;
+    std::map<std::string, std::vector<uint8_t>> newlocalParState;
+    for (auto& [key, value] : parState) {
+        std::vector<uint8_t> keyVector(key.begin(), key.end());
+        std::size_t hashValue = hashVector(keyVector);
+        int parIdx = hashValue % newParallel;
+        // Otherwise, transfer it to the new master.
+        dataTransfer[parToHost[parIdx]][key] = value;
+    }
+    // transfer data to the new master.
+    for (auto& [host, data] : dataTransfer) {
+        std::vector<uint8_t> dataTransferVector =
+          faabric::util::serializeParState(data);
+        if (host == hostIp) {
+            tempParState.emplace(std::move(dataTransferVector));
+            continue;
+        }
+        FunctionStateClient stateClient(user, function, hostToPar[host], host);
+        stateClient.addPartitionState(partitionKey, dataTransferVector);
+    }
+    // If the parallelism Id is changed, or the this partitioned part is
+    // removed.
+    if (newParallelismId == -1) {
+        return false;
+    }
+    // the redis-state will be register later.
+    parallelismId = newParallelismId;
+    return true;
+}
+
+void FunctionState::addTempParState(const uint8_t* buffer, size_t length)
+{
+    std::vector<uint8_t> tempParStateVector(buffer, buffer + length);
+    tempParState.emplace(std::move(tempParStateVector));
+}
+
+bool FunctionState::combineParState()
+{
+    SPDLOG_TRACE("Combining partitioned state for {}/{}-{} old stateSize {}",
+                 user,
+                 function,
+                 parallelismId,
+                 stateSize);
+    // calculate the new size.
+    std::map<std::string, std::vector<uint8_t>> stateMap = getStateMap();
+    stateMap.erase(partitionKey);
+    std::map<std::string, std::vector<uint8_t>> newParStateMap;
+    for (const auto& partialParVec : tempParState) {
+        std::map<std::string, std::vector<uint8_t>> partialParMap =
+          faabric::util::deserializeParState(partialParVec);
+        for (auto& [key, value] : partialParMap) {
+            newParStateMap[key] = value;
+        }
+    }
+    stateMap[partitionKey] = faabric::util::serializeParState(newParStateMap);
+    std::vector<uint8_t> newStateVec =
+      faabric::util::serializeFuncState(stateMap);
+    stateSize = newStateVec.size();
+    // Resize and allocate the new memory.
+    reSize(stateSize);
+    SPDLOG_TRACE("New state size is {}", stateSize);
+    doSet(newStateVec.data());
+    // Clean the tempParState for next repartition
+    tempParState.clear();
+    return true;
 }
 
 // --------------------------------------------
