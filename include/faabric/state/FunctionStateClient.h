@@ -19,9 +19,16 @@ class FunctionStateClient : public faabric::transport::MessageEndpointClient
     const std::string func;
     const int parallelismId;
 
-    size_t stateSize();
+    size_t stateSize(bool lock = false);
 
-    void pushChunks(const std::vector<StateChunk>& chunks, uint32_t stateSize);
+    void lock();
+
+    void unlock();
+
+    void pushChunks(const std::vector<StateChunk>& chunks,
+                    uint32_t stateSize,
+                    bool unlock = false,
+                    std::string parititonKey = "");
 
     void pullChunks(const std::vector<StateChunk>& chunks,
                     uint8_t* bufferStart);

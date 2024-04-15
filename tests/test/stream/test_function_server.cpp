@@ -32,26 +32,12 @@ class SimpleFunctionStateServerTestFixture
         std::vector<uint8_t> k2 = { 2, 3, 4, 5, 6, 7, 8 };
         std::vector<uint8_t> k3 = { 3, 4, 5, 6, 7, 8 };
 
-        // std::vector<uint8_t> k1 = { 9, 8, 9, 9, 7, 7, 6, 5, 4 };
-        // std::vector<uint8_t> k2 = { 3, 1, 1, 2, 3, 4, 5, 6 };
-        // std::vector<uint8_t> k3 = { 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7 };
-
         std::map<std::string, std::vector<uint8_t>> tmpState =
           std::map<std::string, std::vector<uint8_t>>();
         tmpState["k1"] = k1;
         tmpState["k2"] = k2;
         tmpState["k3"] = k3;
         dataA = faabric::util::serializeFuncState(tmpState);
-        // print the data A into the format of {v1, v2, v3 ...}
-        // std::cout << "{";
-        // for (size_t i = 0; i < dataA.size(); ++i) {
-        //     std::cout << static_cast<int>(dataA[i]);
-        //     if (i < dataA.size() - 1) {
-        //         std::cout << ", ";
-        //     }
-        // }
-        // std::cout << "}" << std::endl;
-        // Initialize the dataB
         dataB = faabric::util::serializeFuncState(tmpState);
 
         server.start();

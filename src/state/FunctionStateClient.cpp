@@ -24,7 +24,7 @@ void FunctionStateClient::logRequest(const std::string& op)
       "Requesting {} on {}/{}-{} at {}", op, user, func, parallelismId, host);
 }
 
-size_t FunctionStateClient::stateSize()
+size_t FunctionStateClient::stateSize(bool lock)
 {
     logRequest("functionstate-size");
 
@@ -32,10 +32,36 @@ size_t FunctionStateClient::stateSize()
     request.set_user(user);
     request.set_func(func);
     request.set_parallelismid(parallelismId);
+    request.set_lock(lock);
     faabric::FunctionStateSizeResponse response;
     syncSend(faabric::state::StateCalls::FunctionSize, &request, &response);
 
     return response.statesize();
+}
+
+void FunctionStateClient::lock()
+{
+    logRequest("functionstate-lock");
+
+    faabric::FunctionStateRequest request;
+    request.set_user(user);
+    request.set_func(func);
+    request.set_parallelismid(parallelismId);
+    faabric::EmptyResponse resp;
+    syncSend(faabric::state::StateCalls::FunctionLock, &request, &resp);
+}
+
+void FunctionStateClient::unlock()
+{
+
+    logRequest("functionstate-unlock");
+
+    faabric::FunctionStateRequest request;
+    request.set_user(user);
+    request.set_func(func);
+    request.set_parallelismid(parallelismId);
+    faabric::EmptyResponse resp;
+    syncSend(faabric::state::StateCalls::FunctionUnlock, &request, &resp);
 }
 
 // TODO - Lock the data during pull and push
@@ -67,11 +93,15 @@ void FunctionStateClient::pullChunks(const std::vector<StateChunk>& chunks,
 }
 
 void FunctionStateClient::pushChunks(const std::vector<StateChunk>& chunks,
-                                     uint32_t stateSize)
+                                     uint32_t stateSize,
+                                     bool unlock,
+                                     std::string partitionKey)
 {
     logRequest("functionstate-push-chunks");
 
-    for (const auto& chunk : chunks) {
+    for (auto it = chunks.begin(); it != chunks.end(); ++it) {
+        const auto& chunk = *it;
+
         faabric::FunctionStatePart stateChunk;
         stateChunk.set_user(user);
         stateChunk.set_func(func);
@@ -79,6 +109,12 @@ void FunctionStateClient::pushChunks(const std::vector<StateChunk>& chunks,
         stateChunk.set_offset(chunk.offset);
         stateChunk.set_data(chunk.data, chunk.length);
         stateChunk.set_statesize(stateSize);
+        stateChunk.set_unlock(false);
+        stateChunk.set_pstatekey(partitionKey);
+        bool isLast = (std::next(it) == chunks.end());
+        if (isLast) {
+            stateChunk.set_unlock(unlock);
+        }
         faabric::EmptyResponse resp;
         syncSend(faabric::state::StateCalls::FunctionPush, &stateChunk, &resp);
     }

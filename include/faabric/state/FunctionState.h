@@ -29,13 +29,28 @@ class FunctionState
     static size_t getStateSizeFromRemote(const std::string& userIn,
                                          const std::string& funcIn,
                                          int parallelismIdIn,
-                                         const std::string& thisIPIn);
+                                         const std::string& thisIPIn,
+                                         bool lock = false);
+    // lock the function state and return the time to acquire the lock (ms)
+    long lockWrite();
+    void unlockWrite();
+    long lockMasterWrite();
+    void unlockMasterWrite();
+
     size_t size() const;
     void setPartitionKey(std::string key);
     void set(const uint8_t* buffer);
-    void set(const uint8_t* buffer, long length);
+    void set(const uint8_t* buffer, long length, bool unlock = false);
+
     void reSize(long length);
     void get(uint8_t* buffer);
+    uint8_t* get();
+    void pull();
+
+    // Map the sharedMemory to WASM module
+    void mapSharedMemory(void* destination, long pagesOffset, long nPages);
+    void unmapSharedMemory(void* mappedAddr);
+
     // setChunk function is only used for mastser to receive updated data
     void setChunk(long offset, const uint8_t* buffer, size_t length);
     // getChunk function is only used for mastser to transfer data
@@ -77,7 +92,7 @@ class FunctionState
     std::vector<StateChunk> getAllChunks();
 
     void doSet(const uint8_t* data);
-    void pushToRemote();
+    void pushToRemote(bool unlock = false);
     void doPull();
     void pullFromRemote();
     std::map<std::string, std::vector<uint8_t>> getStateMap();

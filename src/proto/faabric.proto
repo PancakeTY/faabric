@@ -246,6 +246,7 @@ message FunctionStateRequest {
     string func = 2;
     uint32 parallelismId = 3;
     bytes data = 4;
+    bool lock = 5;
 }
 
 message FunctionStateSizeResponse {
@@ -253,6 +254,7 @@ message FunctionStateSizeResponse {
     string func = 2;
     uint32 parallelismId = 3;
     uint64 stateSize = 4;
+    uint64 lockWaitingTime = 5;
 }
 
 message FunctionStateChunkRequest {
@@ -270,6 +272,8 @@ message FunctionStatePart {
     uint64 offset = 4;
     bytes data = 5;
     uint32 stateSize = 6;
+    bool unlock = 7;
+    string pStateKey = 8;
 }
 
 message FunctionStateRegister{

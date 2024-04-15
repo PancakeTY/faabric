@@ -26,6 +26,8 @@ enum StateCalls
     // Add the new partitioned function state data
     FunctionParAdd = 12,
     FunctionParCombine = 13,
+    FunctionLock = 14,
+    FunctionUnlock = 15,
 };
 
 class State
@@ -55,7 +57,13 @@ class State
     // The folowing function is designed for Function State
     size_t getFunctionStateSize(const std::string& user,
                                 const std::string& func,
-                                int32_t parallelismId);
+                                int32_t parallelismId,
+                                bool lock = false);
+
+    // // The folowing function is designed for Function State with Lock
+    // size_t getFunctionStateSizeLock(const std::string& user,
+    //                                 const std::string& func,
+    //                                 int32_t parallelismId);
 
     std::shared_ptr<FunctionState> getFS(const std::string& user,
                                          const std::string& func,

@@ -60,5 +60,11 @@ class StateServer final : public faabric::transport::MessageEndpointServer
 
     std::unique_ptr<google::protobuf::Message> recvFunctionParCombine(
       std::span<const uint8_t> buffer);
+
+    std::unique_ptr<google::protobuf::Message> recvFunctionLock(
+      std::span<const uint8_t> buffer);
+
+    std::unique_ptr<google::protobuf::Message> recvFunctionUnlock(
+      std::span<const uint8_t> buffer);
 };
 }

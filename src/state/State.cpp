@@ -190,8 +190,10 @@ std::string State::getThisIP()
 
 size_t State::getFunctionStateSize(const std::string& user,
                                    const std::string& func,
-                                   int32_t parallelismId)
+                                   int32_t parallelismId,
+                                   bool lock)
 {
+
     if (user.empty() || func.empty()) {
         throw std::runtime_error("Attempting to access state with empty user");
     }
@@ -199,25 +201,20 @@ size_t State::getFunctionStateSize(const std::string& user,
     std::string lookupKey =
       faabric::util::keyForFunction(user, func, parallelismId);
 
-    // See if we have the value locally
+    // See if we have the value locally. Only shared lock will be used here
     {
         faabric::util::SharedLock sharedLock(fsmapMutex);
         if (fsMap.count(lookupKey) > 0 && fsMap[lookupKey]->isMaster) {
+            if (lock) {
+                fsMap[lookupKey]->lockWrite();
+            }
             return fsMap[lookupKey]->size();
         }
     }
 
-    // Full lock
-    FullLock fullLock(fsmapMutex);
-
-    // Double check
-    if (fsMap.count(lookupKey) > 0 && fsMap[lookupKey]->isMaster) {
-        return fsMap[lookupKey]->size();
-    }
-
     // Get from remote
     return FunctionState::getStateSizeFromRemote(
-      user, func, parallelismId, thisIP);
+      user, func, parallelismId, thisIP, lock);
 }
 
 std::shared_ptr<FunctionState> State::getOnlyFS(const std::string& user,
@@ -234,20 +231,12 @@ std::shared_ptr<FunctionState> State::getOnlyFS(const std::string& user,
     std::string lookupKey =
       faabric::util::keyForFunction(user, func, parallelismId);
 
-    // See if we have locally
+    // Only use shared lock here
     {
         SharedLock sharedLock(fsmapMutex);
         if (fsMap.count(lookupKey) > 0) {
             return fsMap[lookupKey];
         }
-    }
-
-    // Full lock
-    FullLock fullLock(fsmapMutex);
-
-    // Double check condition
-    if (fsMap.count(lookupKey) > 0) {
-        return fsMap[lookupKey];
     }
 
     return nullptr;

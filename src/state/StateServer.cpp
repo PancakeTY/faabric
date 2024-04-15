@@ -13,7 +13,7 @@
     auto kv = std::static_pointer_cast<InMemoryStateKeyValue>(                 \
       state.getKV(request.user(), request.key()));
 
-#define FS_FROM_REQUEST(request)                                               \
+#define FS_ONLY_FROM_REQUEST(request)                                          \
     auto fs = std::static_pointer_cast<FunctionState>(state.getOnlyFS(         \
       request.user(), request.func(), request.parallelismid()));
 
@@ -75,6 +75,12 @@ std::unique_ptr<google::protobuf::Message> StateServer::doSyncRecv(
         }
         case faabric::state::StateCalls::FunctionParCombine: {
             return recvFunctionParCombine(message.udata());
+        }
+        case faabric::state::StateCalls::FunctionLock: {
+            return recvFunctionLock(message.udata());
+        }
+        case faabric::state::StateCalls::FunctionUnlock: {
+            return recvFunctionUnlock(message.udata());
         }
         default: {
             throw std::runtime_error(
@@ -218,27 +224,24 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionSize(
 {
     PARSE_MSG(faabric::FunctionStateRequest, buffer.data(), buffer.size())
 
-    // Prepare the response
     SPDLOG_TRACE("Received Function size {}/{}-{}",
                  parsedMsg.user(),
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
-    FS_FROM_REQUEST(parsedMsg)
-    // TODO - delete redis key and return 0
-    if (fs == nullptr || !fs->isMaster) {
-        SPDLOG_ERROR("Function state {}/{}-{} is not found or not master",
-                     parsedMsg.user(),
-                     parsedMsg.func(),
-                     parsedMsg.parallelismid());
-        throw std::runtime_error("StateServer receive size request, but state "
-                                 "is not found or not master");
-    }
-    // Prepare the response
+    size_t stateSize = state.getFunctionStateSize(parsedMsg.user(),
+                               parsedMsg.func(),
+                               parsedMsg.parallelismid(),
+                               parsedMsg.lock());
+    // Prepare for response
     auto response = std::make_unique<faabric::FunctionStateSizeResponse>();
-    response->set_user(fs->user);
-    response->set_func(fs->function);
-    response->set_parallelismid(fs->parallelismId);
-    response->set_statesize(fs->size());
+    response->set_user(parsedMsg.user());
+    response->set_func(parsedMsg.func());
+    response->set_parallelismid(parsedMsg.parallelismid());
+    // TODO - this might happens when batchscheduler create a new parallelism
+    // but dispatch it into other hosts and return 0
+    // it shouldn't happen: !fs->isMaster
+    SPDLOG_TRACE("Function state's size is {}", stateSize);
+    response->set_statesize(stateSize);
     return response;
 }
 
@@ -254,7 +257,7 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPull(
                  parsedMsg.offset(),
                  parsedMsg.offset() + parsedMsg.chunksize());
     // Write the response
-    FS_FROM_REQUEST(parsedMsg)
+    FS_ONLY_FROM_REQUEST(parsedMsg)
     // TODO - delete redis key and return 0
     if (fs == nullptr || !fs->isMaster) {
         SPDLOG_ERROR("Function state {}/{}-{} is not found or not master",
@@ -293,16 +296,25 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPush(
                  parsedMsg.offset(),
                  parsedMsg.offset() + parsedMsg.data().size());
 
-    FS_FROM_REQUEST(parsedMsg)
-    // TODO - delete redis key and return 0
-    if (fs == nullptr || !fs->isMaster) {
-        SPDLOG_ERROR("Function state {}/{}-{} is not found or not master",
+    FS_ONLY_FROM_REQUEST(parsedMsg)
+    if (fs == nullptr) {
+        if (parsedMsg.offset() != 0) {
+            throw std::runtime_error(
+              "StateServer receive push request, but state "
+              "is not found or not master when offset is not 0");
+        }
+        SPDLOG_DEBUG("Function state {}/{}-{} is creating",
                      parsedMsg.user(),
                      parsedMsg.func(),
                      parsedMsg.parallelismid());
-        throw std::runtime_error("StateServer receive size request, but state "
-                                 "is not found or not master");
+        fs = std::static_pointer_cast<FunctionState>(state.getFS(
+          parsedMsg.user(), parsedMsg.func(), parsedMsg.parallelismid()));
+        fs->lockWrite();
+        if (parsedMsg.pstatekey() != "") {
+            fs->setPartitionKey(parsedMsg.pstatekey());
+        }
     }
+    // TODO - delete redis key and return 0
     if (parsedMsg.offset() == 0) {
         SPDLOG_TRACE("Resizing to the function state from {} to {} ",
                      fs->size(),
@@ -313,7 +325,9 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPush(
     fs->setChunk(parsedMsg.offset(),
                  BYTES_CONST(parsedMsg.data().c_str()),
                  parsedMsg.data().size());
-
+    if (parsedMsg.unlock()) {
+        fs->unlockWrite();
+    }
     auto response = std::make_unique<faabric::StateResponse>();
     return response;
 }
@@ -329,7 +343,7 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionRepartition(
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
 
-    FS_FROM_REQUEST(parsedMsg)
+    FS_ONLY_FROM_REQUEST(parsedMsg)
     bool result = fs->rePartitionState(parsedMsg.newparitionmap());
     if (!result) {
         state.deleteFS(
@@ -350,12 +364,11 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionParAdd(
                  parsedMsg.user(),
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
-    FS_FROM_REQUEST(parsedMsg)
+    FS_ONLY_FROM_REQUEST(parsedMsg)
     // fs might be nullptr if the function state is not found.
     if (fs == nullptr) {
-        fs = state.getFS(parsedMsg.user(),
-                         parsedMsg.func(),
-                         parsedMsg.parallelismid());
+        fs = state.getFS(
+          parsedMsg.user(), parsedMsg.func(), parsedMsg.parallelismid());
         fs->setPartitionKey(parsedMsg.pstatekey());
     }
     auto reqData = BYTES_CONST(parsedMsg.data().c_str());
@@ -374,8 +387,38 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionParCombine(
                  parsedMsg.user(),
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
-    FS_FROM_REQUEST(parsedMsg)
+    FS_ONLY_FROM_REQUEST(parsedMsg)
     fs->combineParState();
+    // No information is needed by response
+    auto response = std::make_unique<faabric::StateResponse>();
+    return response;
+}
+
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionLock(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::FunctionStateRequest, buffer.data(), buffer.size())
+    SPDLOG_TRACE("Received Function LOCK request {}/{}-{}",
+                 parsedMsg.user(),
+                 parsedMsg.func(),
+                 parsedMsg.parallelismid());
+    FS_ONLY_FROM_REQUEST(parsedMsg)
+    fs->lockWrite();
+    // No information is needed by response
+    auto response = std::make_unique<faabric::StateResponse>();
+    return response;
+}
+
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionUnlock(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::FunctionStateRequest, buffer.data(), buffer.size())
+    SPDLOG_TRACE("Received Function UNLOCK request {}/{}-{}",
+                 parsedMsg.user(),
+                 parsedMsg.func(),
+                 parsedMsg.parallelismid());
+    FS_ONLY_FROM_REQUEST(parsedMsg)
+    fs->unlockWrite();
     // No information is needed by response
     auto response = std::make_unique<faabric::StateResponse>();
     return response;

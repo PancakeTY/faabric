@@ -1,6 +1,5 @@
 #include <faabric/state/FunctionState.h>
 #include <faabric/state/FunctionStateClient.h>
-#include <faabric/util/locks.h>
 #include <faabric/util/logging.h>
 #include <faabric/util/macros.h>
 #include <faabric/util/memory.h>
@@ -50,6 +49,40 @@ FunctionState::FunctionState(const std::string& userIn,
                              const std::string& hostIpIn)
   : FunctionState(userIn, functionIn, parallelismIdIn, hostIpIn, 0)
 {}
+
+long FunctionState::lockWrite()
+{
+    long startTime = faabric::util::getGlobalClock().epochMillis();
+    SPDLOG_TRACE(
+      "Waiting Locking write for {}/{}-{}", user, function, parallelismId);
+    stateMutex.lock();
+    SPDLOG_TRACE(
+      "Gain Locked write for {}/{}-{}", user, function, parallelismId);
+    long endTime = faabric::util::getGlobalClock().epochMillis();
+    return endTime - startTime;
+}
+
+void FunctionState::unlockWrite()
+{
+    stateMutex.unlock();
+}
+
+long FunctionState::lockMasterWrite()
+{
+    if (isMaster) {
+        return lockWrite();
+    }
+    FunctionStateClient cli(user, function, parallelismId, masterIp);
+    cli.lock();
+}
+void FunctionState::unlockMasterWrite()
+{
+    if (isMaster) {
+        return unlockWrite();
+    }
+    FunctionStateClient cli(user, function, parallelismId, masterIp);
+    cli.unlock();
+}
 
 void FunctionState::checkSizeConfigured()
 {
@@ -114,8 +147,6 @@ void FunctionState::set(const uint8_t* buffer)
 {
     checkSizeConfigured();
 
-    // Unique lock for setting the whole value
-    FullLock lock(stateMutex);
     doSet(buffer);
 }
 
@@ -124,7 +155,6 @@ void FunctionState::reSize(long length)
     stateSize = length;
     checkSizeConfigured();
     // If new length is bigger than the reserved size, reallocate it.
-    FullLock lock(stateMutex);
     if (length > sharedMemSize) {
         fullyAllocated = false;
         SPDLOG_DEBUG(
@@ -144,12 +174,16 @@ void FunctionState::reSize(long length)
     allocateChunk(0, sharedMemSize);
 }
 
-void FunctionState::set(const uint8_t* buffer, long length)
+void FunctionState::set(const uint8_t* buffer, long length, bool unlock)
 {
     reSize(length);
     doSet(buffer);
     if (!isMaster) {
-        pushToRemote();
+        pushToRemote(unlock);
+        return;
+    }
+    if (unlock) {
+        unlockWrite();
     }
 }
 
@@ -250,14 +284,14 @@ void FunctionState::doSet(const uint8_t* buffer)
     std::copy(buffer, buffer + stateSize, BYTES(sharedMemory));
 }
 
-void FunctionState::pushToRemote()
+void FunctionState::pushToRemote(bool unlock)
 {
     if (isMaster) {
         return;
     }
     std::vector<StateChunk> allChunks = getAllChunks();
     FunctionStateClient cli(user, function, parallelismId, masterIp);
-    cli.pushChunks(allChunks, stateSize);
+    cli.pushChunks(allChunks, stateSize, unlock, partitionKey);
 }
 
 // Only the Master node can return its data, otherwise pull at first.
@@ -265,9 +299,19 @@ void FunctionState::get(uint8_t* buffer)
 {
     doPull();
 
-    SharedLock lock(stateMutex);
     auto bytePtr = BYTES(sharedMemory);
     std::copy(bytePtr, bytePtr + stateSize, buffer);
+}
+
+uint8_t* FunctionState::get()
+{
+    doPull();
+    return BYTES(sharedMemory);
+}
+
+void FunctionState::pull()
+{
+    doPull();
 }
 
 // In our function, doPull is called to retrive the data from the master node.
@@ -277,8 +321,6 @@ void FunctionState::doPull()
         return;
     }
     checkSizeConfigured();
-    // Unique lock on the whole value
-    faabric::util::FullLock lock(stateMutex);
     size_t updatedSize =
       getStateSizeFromRemote(user, function, parallelismId, hostIp);
     // Make sure storage is allocated
@@ -297,11 +339,82 @@ void FunctionState::pullFromRemote()
     cli.pullChunks(chunks, BYTES(sharedMemory));
 }
 
-void FunctionState::setChunk(long offset, const uint8_t* buffer, size_t length)
+void FunctionState::mapSharedMemory(void* destination,
+                                    long pagesOffset,
+                                    long nPages)
 {
     checkSizeConfigured();
 
-    FullLock lock(stateMutex);
+    PROF_START(mapSharedMem)
+
+    if (!isPageAligned(destination)) {
+        SPDLOG_ERROR("Non-aligned destination for shared mapping of {}",
+                     function);
+        throw std::runtime_error("Mapping misaligned shared memory");
+    }
+    // We don't have to lock there, it it locked when read the State Size.
+
+    // Ensure the underlying memory is allocated
+    size_t offset = pagesOffset * faabric::util::HOST_PAGE_SIZE;
+    size_t length = nPages * faabric::util::HOST_PAGE_SIZE;
+    allocateChunk(offset, length);
+
+    // Add a mapping of the relevant pages of shared memory onto the new region
+    void* result = mremap(BYTES(sharedMemory) + offset,
+                          0,
+                          length,
+                          MREMAP_FIXED | MREMAP_MAYMOVE,
+                          destination);
+
+    // Handle failure
+    if (result == MAP_FAILED) {
+        SPDLOG_ERROR("Failed mapping for {} at {} with size {}. errno: {} ({})",
+                     function,
+                     offset,
+                     length,
+                     errno,
+                     strerror(errno));
+
+        throw std::runtime_error("Failed mapping shared memory");
+    }
+
+    // Check the mapping is where we expect it to be
+    if (destination != result) {
+        SPDLOG_ERROR("New mapped addr for {} doesn't match required {} != {}",
+                     function,
+                     destination,
+                     result);
+        throw std::runtime_error("Misaligned shared memory mapping");
+    }
+
+    PROF_END(mapSharedMem)
+}
+
+void FunctionState::unmapSharedMemory(void* mappedAddr)
+{
+    if (!isPageAligned(mappedAddr)) {
+        SPDLOG_ERROR("Attempting to unmap non-page-aligned memory at {} for {}",
+                     mappedAddr,
+                     function);
+        throw std::runtime_error("Unmapping misaligned shared memory");
+    }
+
+    // Unmap the current memory so it can be reused
+    int result = munmap(mappedAddr, sharedMemSize);
+    if (result == -1) {
+        SPDLOG_ERROR(
+          "Failed to unmap shared memory at {} with size {}. errno: {}",
+          mappedAddr,
+          sharedMemSize,
+          errno);
+
+        throw std::runtime_error("Failed unmapping shared memory");
+    }
+}
+
+void FunctionState::setChunk(long offset, const uint8_t* buffer, size_t length)
+{
+    checkSizeConfigured();
 
     // Check we're in bounds - note that we permit chunks within the _allocated_
     // memory
@@ -338,7 +451,6 @@ uint8_t* FunctionState::getChunk(long offset, long len)
 
 std::map<std::string, std::vector<uint8_t>> FunctionState::getStateMap()
 {
-    SharedLock lock(stateMutex);
     if (stateSize == 0 || sharedMemory == nullptr) {
         return std::map<std::string, std::vector<uint8_t>>();
     }
@@ -463,7 +575,8 @@ bool FunctionState::combineParState()
 size_t FunctionState::getStateSizeFromRemote(const std::string& userIn,
                                              const std::string& funcIn,
                                              int parallelismIdIn,
-                                             const std::string& thisIP)
+                                             const std::string& thisIP,
+                                             bool lock)
 {
     std::string mainIP;
     try {
@@ -474,7 +587,7 @@ size_t FunctionState::getStateSizeFromRemote(const std::string& userIn,
         return 0;
     }
     FunctionStateClient stateClient(userIn, funcIn, parallelismIdIn, mainIP);
-    size_t stateSize = stateClient.stateSize();
+    size_t stateSize = stateClient.stateSize(lock);
     return stateSize;
 }
 
