@@ -82,6 +82,9 @@ std::unique_ptr<google::protobuf::Message> StateServer::doSyncRecv(
         case faabric::state::StateCalls::FunctionUnlock: {
             return recvFunctionUnlock(message.udata());
         }
+        case faabric::state::StateCalls::FunctionCreate: {
+            return recvFunctionCreate(message.udata());
+        }
         default: {
             throw std::runtime_error(
               fmt::format("Unrecognized state call header: {}", header));
@@ -229,9 +232,9 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionSize(
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
     size_t stateSize = state.getFunctionStateSize(parsedMsg.user(),
-                               parsedMsg.func(),
-                               parsedMsg.parallelismid(),
-                               parsedMsg.lock());
+                                                  parsedMsg.func(),
+                                                  parsedMsg.parallelismid(),
+                                                  parsedMsg.lock());
     // Prepare for response
     auto response = std::make_unique<faabric::FunctionStateSizeResponse>();
     response->set_user(parsedMsg.user());
@@ -297,22 +300,26 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionPush(
                  parsedMsg.offset() + parsedMsg.data().size());
 
     FS_ONLY_FROM_REQUEST(parsedMsg)
+    // This should be removed !
     if (fs == nullptr) {
-        if (parsedMsg.offset() != 0) {
-            throw std::runtime_error(
-              "StateServer receive push request, but state "
-              "is not found or not master when offset is not 0");
-        }
-        SPDLOG_DEBUG("Function state {}/{}-{} is creating",
-                     parsedMsg.user(),
-                     parsedMsg.func(),
-                     parsedMsg.parallelismid());
-        fs = std::static_pointer_cast<FunctionState>(state.getFS(
-          parsedMsg.user(), parsedMsg.func(), parsedMsg.parallelismid()));
-        fs->lockWrite();
-        if (parsedMsg.pstatekey() != "") {
-            fs->setPartitionKey(parsedMsg.pstatekey());
-        }
+        throw std::runtime_error(
+          "StateServer receive push request, but state "
+          "is not found or not master");
+        // if (parsedMsg.offset() != 0) {
+        //     throw std::runtime_error(
+        //       "StateServer receive push request, but state "
+        //       "is not found or not master when offset is not 0");
+        // }
+        // SPDLOG_DEBUG("Function state {}/{}-{} is creating",
+        //              parsedMsg.user(),
+        //              parsedMsg.func(),
+        //              parsedMsg.parallelismid());
+        // fs = std::static_pointer_cast<FunctionState>(state.getFS(
+        //   parsedMsg.user(), parsedMsg.func(), parsedMsg.parallelismid()));
+        // fs->lockWrite();
+        // if (parsedMsg.pstatekey() != "") {
+        //     fs->setPartitionKey(parsedMsg.pstatekey());
+        // }
     }
     // TODO - delete redis key and return 0
     if (parsedMsg.offset() == 0) {
@@ -419,6 +426,29 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionUnlock(
                  parsedMsg.parallelismid());
     FS_ONLY_FROM_REQUEST(parsedMsg)
     fs->unlockWrite();
+    // No information is needed by response
+    auto response = std::make_unique<faabric::StateResponse>();
+    return response;
+}
+
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionCreate(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(
+      faabric::FunctionStateTransferRequest, buffer.data(), buffer.size())
+    SPDLOG_TRACE("Received Function CREATE request {}/{}-{}",
+                 parsedMsg.user(),
+                 parsedMsg.func(),
+                 parsedMsg.parallelismid());
+    auto fs = state.createFS(parsedMsg.user(),
+                             parsedMsg.func(),
+                             parsedMsg.parallelismid(),
+                             parsedMsg.pstatekey());
+    if (!fs->isMaster) {
+        throw std::runtime_error(
+          "StateServer receive create request, but created state "
+          "is not master");
+    }
     // No information is needed by response
     auto response = std::make_unique<faabric::StateResponse>();
     return response;

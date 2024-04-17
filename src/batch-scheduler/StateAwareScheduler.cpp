@@ -10,6 +10,15 @@
 
 namespace faabric::batch_scheduler {
 
+// We register the function state in the functionStateRegister map.
+void StateAwareScheduler::funcStateInitializer(
+  std::map<std::string, std::tuple<std::string, std::string>> otherRegister)
+{   
+    funcStateRegMap["stream_function_state"] = std::make_tuple("", "");
+    funcStateRegMap["stream_function_parstate"] =
+      std::make_tuple("partitionInputKey", "partitionStateKey");
+}
+
 static std::map<std::string, int> getHostFreqCount(
   std::shared_ptr<SchedulingDecision> decision)
 {
@@ -342,6 +351,27 @@ int getNextMsgId(const std::set<int>& scheduledMessages, int msgIdx)
     return msgIdx;
 }
 
+bool registerStateToHost(const std::string& userFunctionParIdx,
+                         const std::string& host,
+                         const std::string& partitionBy,
+                         const std::string stateKey)
+{
+    SPDLOG_DEBUG("Registering state {} to host {}", userFunctionParIdx, host);
+    SPDLOG_DEBUG("Partition by: {} and stateKey : {}", partitionBy, stateKey);
+    // Update Redis Information
+    redis::Redis& redis = redis::Redis::getState();
+    std::string mainKey = MAIN_KEY_PREFIX + userFunctionParIdx;
+    std::vector<uint8_t> mainIPBytes = faabric::util::stringToBytes(host);
+    redis.set(mainKey, mainIPBytes);
+    // Send Create information in the host.
+    auto [user, function, parallelismId] =
+      faabric::util::splitUserFuncPar(userFunctionParIdx);
+    state::FunctionStateClient cli(
+      user, function, std::stoi(parallelismId), host);
+    cli.createState(stateKey);
+    return true;
+}
+
 // The BinPack's scheduler decision algorithm is very simple. It first sorts
 // hosts (i.e. bins) in a specific order (depending on the scheduling type),
 // and then starts filling bins from begining to end, until it runs out of
@@ -368,16 +398,35 @@ std::shared_ptr<SchedulingDecision> StateAwareScheduler::makeSchedulingDecision(
     std::vector<std::string> myDecision(req->messages_size());
 
     // Before assign slots by using bin-pack. We assign the function-state
-    // functions.
+    // functions near its function state.
     for (int msgIdx = 0; msgIdx < req->messages_size(); msgIdx++) {
         std::string userFunc =
           req->messages(msgIdx).user() + "_" + req->messages(msgIdx).function();
-        // If it is not a function-state function, ignore it.
-        if (!functionParallelism.contains(userFunc)) {
+        // If it is not a function-state function, we don't need to consider it.
+        if (!funcStateRegMap.contains(userFunc)) {
             continue;
         }
+        // If the function invoke at the first time, register it and create the
+        // state.
+        if (!functionParallelism.contains(userFunc)) {
+            // Default parallelism is 1.
+            functionParallelism[userFunc] = 1;
+            functionCounter[userFunc] = 0;
+            // The default parallelism Id is 0
+            std::string funcParaId = userFunc + "_0";
+            // TODO - Select a proper host.
+            std::string host = sortedHosts[0]->ip;
+            stateHost[funcParaId] = host;
+            // If the State is partitionedState, register it.
+            std::string partitionBy = std::get<0>(funcStateRegMap[userFunc]);
+            std::string stateKey = std::get<1>(funcStateRegMap[userFunc]);
+            if (partitionBy != "" && stateKey != "") {
+                statePartitionBy[userFunc] = partitionBy;
+            }
+            // Register the state to the host.
+            registerStateToHost(funcParaId, host, partitionBy, stateKey);
+        }
         // Otherwise, try to assign it to the host that has the function state.
-        // Assign the
         int parallelismId =
           getParallelismIndex(userFunc, req->messages(msgIdx));
         std::string hostKey = userFunc + "_" + std::to_string(parallelismId);
@@ -613,6 +662,14 @@ bool StateAwareScheduler::repartitionParitionedState(
     }
     // Wait until get the response from all state server.
     return true;
+}
+
+void StateAwareScheduler::flushStateInfo(){
+    SPDLOG_DEBUG("Flushing state information");
+    functionParallelism.clear();
+    functionCounter.clear();
+    stateHost.clear();
+    statePartitionBy.clear();
 }
 
 } // namespace faabric::batch_scheduler

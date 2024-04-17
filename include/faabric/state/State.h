@@ -28,6 +28,7 @@ enum StateCalls
     FunctionParCombine = 13,
     FunctionLock = 14,
     FunctionUnlock = 15,
+    FunctionCreate = 16,
 };
 
 class State
@@ -64,6 +65,11 @@ class State
     // size_t getFunctionStateSizeLock(const std::string& user,
     //                                 const std::string& func,
     //                                 int32_t parallelismId);
+
+    std::shared_ptr<FunctionState> createFS(const std::string& user,
+                                            const std::string& func,
+                                            int32_t parallelismId,
+                                            const std::string& parStateKey = "");
 
     std::shared_ptr<FunctionState> getFS(const std::string& user,
                                          const std::string& func,

@@ -4,24 +4,38 @@
 #include <faabric/batch-scheduler/SchedulingDecision.h>
 #include <faabric/util/batch.h>
 #include <map>
+#include <set>
 #include <string>
+#include <tuple>
 
 namespace faabric::batch_scheduler {
 
 class StateAwareScheduler final : public BatchScheduler
 {
   public:
+    StateAwareScheduler()
+    {
+        // Initialization code here
+        std::map<std::string, std::tuple<std::string, std::string>>
+          otherRegister;
+        funcStateInitializer(otherRegister);
+    }
+
     std::shared_ptr<SchedulingDecision> makeSchedulingDecision(
       HostMap& hostMap,
       const InFlightReqs& inFlightReqs,
       std::shared_ptr<faabric::BatchExecuteRequest> req) override;
+
     // put here (public) only for tests.
     std::shared_ptr<std::map<std::string, std::string>>
     increaseFunctionParallelism(const std::string& userFunction,
                                 HostMap& hostMap);
+
     bool repartitionParitionedState(
       std::string userFunction,
       std::shared_ptr<std::map<std::string, std::string>> oldStateHost);
+
+    void flushStateInfo();
 
   private:
     bool isFirstDecisionBetter(
@@ -45,6 +59,13 @@ class StateAwareScheduler final : public BatchScheduler
     std::map<std::string, std::string> stateHost;
     // FuctionUser : Input Parition Key
     std::map<std::string, std::string> statePartitionBy;
+
+    // Key is User-function : Value is <parititonInputKey, partitionStateKey>
+    std::map<std::string, std::tuple<std::string, std::string>> funcStateRegMap;
+
+    void funcStateInitializer(
+      std::map<std::string, std::tuple<std::string, std::string>>
+        otherRegister);
 
     /***
      * example should be like:

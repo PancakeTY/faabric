@@ -74,6 +74,8 @@ long FunctionState::lockMasterWrite()
     }
     FunctionStateClient cli(user, function, parallelismId, masterIp);
     cli.lock();
+    // TODO - return the locking time.
+    return 0;
 }
 void FunctionState::unlockMasterWrite()
 {
@@ -182,7 +184,7 @@ void FunctionState::set(const uint8_t* buffer, long length, bool unlock)
         pushToRemote(unlock);
         return;
     }
-    if (unlock) {
+    if (isMaster && unlock) {
         unlockWrite();
     }
 }

@@ -40,6 +40,8 @@ class FunctionStateClient : public faabric::transport::MessageEndpointClient
 
     void combineParState();
 
+    bool createState(std::string stateKey);
+
   private:
     // void sendStateRequest(faabric::state::FunctionStateCalls header,
     //                       const uint8_t* data,

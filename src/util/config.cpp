@@ -27,14 +27,14 @@ void SystemConfig::initialise()
       getEnvVar("DELTA_SNAPSHOT_ENCODING", "pages=4096;xor;zstd=1");
 
     // Redis
-    redisStateHost = getEnvVar("REDIS_STATE_HOST", "localhost");
-    redisQueueHost = getEnvVar("REDIS_QUEUE_HOST", "localhost");
+    redisStateHost = getEnvVar("REDIS_STATE_HOST", "redis-state");
+    redisQueueHost = getEnvVar("REDIS_QUEUE_HOST", "redis-queue");
     redisPort = getEnvVar("REDIS_PORT", "6379");
 
     // Scheduling
     // TODO(planner-scheduler): remove some of this
     overrideCpuCount = this->getSystemConfIntParam("OVERRIDE_CPU_COUNT", "0");
-    batchSchedulerMode = getEnvVar("BATCH_SCHEDULER_MODE", "bin-pack");
+    batchSchedulerMode = getEnvVar("BATCH_SCHEDULER_MODE", "state-aware");
 
     // Worker-related timeouts (all in seconds)
     globalMessageTimeout =

@@ -64,6 +64,24 @@ void FunctionStateClient::unlock()
     syncSend(faabric::state::StateCalls::FunctionUnlock, &request, &resp);
 }
 
+bool FunctionStateClient::createState(std::string stateKey)
+{
+    logRequest("functionstate-create");
+
+    faabric::FunctionStateTransferRequest request;
+    request.set_user(user);
+    request.set_func(func);
+    request.set_parallelismid(parallelismId);
+    request.set_isparition(false);
+    if (!stateKey.empty()) {
+        request.set_isparition(true);
+        request.set_pstatekey(stateKey);
+    }
+    faabric::EmptyResponse resp;
+    syncSend(faabric::state::StateCalls::FunctionCreate, &request, &resp);
+    return true;
+}
+
 // TODO - Lock the data during pull and push
 
 void FunctionStateClient::pullChunks(const std::vector<StateChunk>& chunks,

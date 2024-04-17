@@ -299,3 +299,13 @@ message FunctionStateAdd{
     string pStateKey = 4;
     bytes data = 5;
 }
+
+message FunctionStateTransferRequest{
+    string user = 1;
+    string func = 2;
+    uint32 parallelismId = 3;
+    string host = 4;
+    bool isParition = 5;
+    string pInputKey = 6;
+    string pStateKey = 7;
+}

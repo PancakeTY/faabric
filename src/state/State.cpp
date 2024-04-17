@@ -201,17 +201,22 @@ size_t State::getFunctionStateSize(const std::string& user,
     std::string lookupKey =
       faabric::util::keyForFunction(user, func, parallelismId);
 
+    std::shared_ptr<FunctionState> targetFs = nullptr;
     // See if we have the value locally. Only shared lock will be used here
     {
         faabric::util::SharedLock sharedLock(fsmapMutex);
         if (fsMap.count(lookupKey) > 0 && fsMap[lookupKey]->isMaster) {
-            if (lock) {
-                fsMap[lookupKey]->lockWrite();
-            }
-            return fsMap[lookupKey]->size();
+            targetFs = fsMap[lookupKey];
         }
     }
-
+    // We don't want hold the fsMap lock when trying acquiring the lock for the
+    // function state. DeadLock might happens.
+    if (targetFs != nullptr) {
+        if (lock) {
+            targetFs->lockWrite();
+        }
+        return targetFs->size();
+    }
     // Get from remote
     return FunctionState::getStateSizeFromRemote(
       user, func, parallelismId, thisIP, lock);
@@ -308,6 +313,34 @@ std::shared_ptr<FunctionState> State::doGetFS(const std::string& user,
         fsMap.emplace(lookupKey, std::move(fs));
     }
 
+    return fsMap[lookupKey];
+}
+
+std::shared_ptr<FunctionState> State::createFS(const std::string& user,
+                                               const std::string& func,
+                                               int32_t parallelismId,
+                                               const std::string& parStateKey)
+{
+    if (user.empty() || func.empty()) {
+        throw std::runtime_error(fmt::format(
+          "Attempting to access state with empty user or key ({}/{})",
+          user,
+          func));
+    }
+    std::string lookupKey =
+      faabric::util::keyForFunction(user, func, parallelismId);
+
+    // If we have it locally, delete it and create new.
+    FullLock fullLock(fsmapMutex);
+    if (fsMap.count(lookupKey) > 0) {
+        fsMap.erase(lookupKey);
+    }
+    auto fs =
+      std::make_shared<FunctionState>(user, func, parallelismId, thisIP);
+    if (!parStateKey.empty()) {
+        fs->setPartitionKey(parStateKey);
+    }
+    fsMap.emplace(lookupKey, std::move(fs));
     return fsMap[lookupKey];
 }
 

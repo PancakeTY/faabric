@@ -57,21 +57,37 @@ bool stringIsInt(const std::string& input)
            input.find_first_not_of("0123456789") == std::string::npos;
 }
 
-std::tuple<std::string, std::string, std::string> splitUserFuncPar(const std::string& input) {
-    // Find the positions of the underscores
+/**
+ * Partition a stream_function_state_0 into user, name and parallelismIdx
+ *
+ * "stream" corresponds to the first part before the first underscore.
+ * "function_state" corresponds to the second part spanning from after the first
+ * underscore to the second underscore.
+ * "0" corresponds to the numerical part after the last underscore.
+ */
+std::tuple<std::string, std::string, std::string> splitUserFuncPar(
+  const std::string& input)
+{
     size_t firstUnderscorePos = input.find('_');
-    size_t secondUnderscorePos = input.find('_', firstUnderscorePos + 1);
-    
-    // Check if underscores were found
-    if (firstUnderscorePos == std::string::npos || secondUnderscorePos == std::string::npos) {
-        throw std::invalid_argument("Input string format is incorrect.");
+    if (firstUnderscorePos == std::string::npos) {
+        throw std::invalid_argument(
+          "Input string format is incorrect (missing underscores).");
     }
-    
-    // Extract the substrings based on the positions of the underscores
+
+    // Locate the last underscore
+    size_t lastUnderscorePos = input.rfind('_');
+    if (lastUnderscorePos == std::string::npos ||
+        lastUnderscorePos == firstUnderscorePos) {
+        throw std::invalid_argument(
+          "Input string format is incorrect (missing last underscore).");
+    }
+
+    // Extract the segments
     std::string part1 = input.substr(0, firstUnderscorePos);
-    std::string part2 = input.substr(firstUnderscorePos + 1, secondUnderscorePos - firstUnderscorePos - 1);
-    std::string part3 = input.substr(secondUnderscorePos + 1);
-    
+    std::string part2 = input.substr(
+      firstUnderscorePos + 1, lastUnderscorePos - firstUnderscorePos - 1);
+    std::string part3 = input.substr(lastUnderscorePos + 1);
+
     return std::make_tuple(part1, part2, part3);
 }
 }

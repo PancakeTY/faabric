@@ -1,3 +1,5 @@
+#include <faabric/batch-scheduler/BatchScheduler.h>
+#include <faabric/batch-scheduler/StateAwareScheduler.h>
 #include <faabric/endpoint/FaabricEndpoint.h>
 #include <faabric/planner/Planner.h>
 #include <faabric/planner/PlannerEndpointHandler.h>
@@ -82,6 +84,21 @@ void PlannerEndpointHandler::onRequest(
         }
         case faabric::planner::HttpMessage_Type_FLUSH_EXECUTORS: {
             SPDLOG_DEBUG("Planner received FLUSH_EXECUTORS request");
+            // Flush the state aware batch_scheduler state info
+            std::shared_ptr<faabric::batch_scheduler::BatchScheduler>
+              batchScheduler = faabric::batch_scheduler::getBatchScheduler();
+            // Try to cast it to a StateAwareBatchScheduler
+            std::shared_ptr<faabric::batch_scheduler::StateAwareScheduler>
+              stateAwareScheduler = std::dynamic_pointer_cast<
+                faabric::batch_scheduler::StateAwareScheduler>(batchScheduler);
+            if (stateAwareScheduler) {
+                stateAwareScheduler->flushStateInfo();
+            }
+            // Check if the cast was successful
+            if (!stateAwareScheduler) {
+                throw std::runtime_error(
+                  "Failed to cast BatchScheduler to StateAwareBatchScheduler");
+            }
             bool success = faabric::planner::getPlanner().flush(
               faabric::planner::FlushType::Executors);
             if (success) {
