@@ -5,7 +5,10 @@
 #include <faabric/util/logging.h>
 
 #include <condition_variable>
+#include <deque>
+#include <numeric>
 #include <queue>
+#include <iostream>
 #include <readerwriterqueue/readerwritercircularbuffer.h>
 
 #define DEFAULT_QUEUE_TIMEOUT_MS 5000
@@ -236,4 +239,45 @@ class TokenPool
     int _size;
     Queue<int> queue;
 };
+
+template<typename T>
+class FixedSizeQueue
+{
+  private:
+    std::deque<T> deque;
+    size_t capacity;
+
+  public:
+    explicit FixedSizeQueue(size_t capacity)
+      : capacity(capacity)
+    {}
+
+    void add(const T& value)
+    {
+        if (deque.size() == capacity) {
+            deque.pop_front();
+        }
+        deque.push_back(value);
+
+    }
+
+    T average() const
+    {
+        if (deque.empty())
+            return T();
+
+        // Use long to accumulate to prevent overflow
+        long sum = std::accumulate(deque.begin(), deque.end(), 0LL);
+        return static_cast<T>(sum / deque.size());
+    }
+
+    void display() const
+    {
+        for (auto& item : deque) {
+            std::cout << item << " ";
+        }
+        std::cout << "\n";
+    }
+};
+
 }

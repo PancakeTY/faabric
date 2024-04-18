@@ -51,37 +51,6 @@ FunctionState::FunctionState(const std::string& userIn,
   : FunctionState(userIn, functionIn, parallelismIdIn, hostIpIn, 0)
 {}
 
-// long FunctionState::lockWrite()
-// {
-//     long startTime = faabric::util::getGlobalClock().epochMillis();
-//     std::cout << "Address of stateMutex: " << &stateMutex << std::endl;
-
-//     SPDLOG_TRACE("Waiting Locking write for {}: {}/{}-{}",
-//                  hostIp,
-//                  user,
-//                  function,
-//                  parallelismId);
-//     stateMutex.lock();
-//     SPDLOG_TRACE(
-//       "Gain Locked write for {}/{}-{}", user, function, parallelismId);
-//     long endTime = faabric::util::getGlobalClock().epochMillis();
-//     return endTime - startTime;
-// }
-
-// void FunctionState::unlockWrite()
-// {
-//     std::cout << "Address of stateMutex: " << &stateMutex << std::endl;
-
-//     SPDLOG_TRACE("Unlocking write for {}: {}/{}-{}",
-//                  hostIp,
-//                  user,
-//                  function,
-//                  parallelismId);
-//     stateMutex.unlock();
-//     SPDLOG_TRACE(
-//       "Unlocked write for {}/{}-{} success", user, function, parallelismId);
-// }
-
 long FunctionState::lockWrite()
 {
     long startTime = faabric::util::getGlobalClock().epochMillis();
@@ -91,10 +60,17 @@ long FunctionState::lockWrite()
                  function,
                  parallelismId);
     sem.acquire();
-    SPDLOG_TRACE(
-      "Gain Locked write for {}/{}-{}", user, function, parallelismId);
     long endTime = faabric::util::getGlobalClock().epochMillis();
-    return endTime - startTime;
+    tempLockAquireTime = endTime;
+    int timeDiff = endTime - startTime;
+    // Record the locking congestion time
+    SPDLOG_TRACE("Gain Lock and Lock Congestion time for {}/{}-{} is {} ms",
+                 user,
+                 function,
+                 parallelismId,
+                 timeDiff);
+    metrics.lockBlockTimeQueue.add(timeDiff);
+    return timeDiff;
 }
 
 void FunctionState::unlockWrite()
@@ -104,11 +80,17 @@ void FunctionState::unlockWrite()
                  user,
                  function,
                  parallelismId);
+    long releaseTime = faabric::util::getGlobalClock().epochMillis();
+    int timeDiff = releaseTime - tempLockAquireTime;
+    // Record the holding time of the lock
+    SPDLOG_TRACE("Write lock holding time for {}/{}-{} is {} ms",
+                 user,
+                 function,
+                 parallelismId,
+                 timeDiff);
+    metrics.lockHoldTimeQueue.add(timeDiff);
     sem.release();
-    SPDLOG_TRACE(
-      "Unlocked write for {}/{}-{} success", user, function, parallelismId);
 }
-
 
 long FunctionState::lockMasterWrite()
 {
@@ -120,6 +102,7 @@ long FunctionState::lockMasterWrite()
     // TODO - return the locking time.
     return 0;
 }
+
 void FunctionState::unlockMasterWrite()
 {
     if (isMaster) {
@@ -614,6 +597,30 @@ bool FunctionState::combineParState()
     // Clean the tempParState for next repartition
     tempParState.clear();
     return true;
+}
+
+std::map<std::string, int> FunctionState::getMetrics()
+{
+    SPDLOG_TRACE("Get function state metrics for {}: {}/{}-{}",
+                 hostIp,
+                 user,
+                 function,
+                 parallelismId);
+    std::map<std::string, int> metricsResult;
+    if (!isMaster) {
+        SPDLOG_WARN("Only the master node record metrics");
+        return metricsResult;
+    }
+    metricsResult["lockBlockTime"] = metrics.lockBlockTimeQueue.average();
+    metricsResult["lockHoldTime"] = metrics.lockHoldTimeQueue.average();
+    // Print the metrics
+    SPDLOG_DEBUG("Metrics for {}/{}-{}: lockBlockTime {} lockHoldTime {}",
+                 user,
+                 function,
+                 parallelismId,
+                 metricsResult["lockBlockTime"],
+                 metricsResult["lockHoldTime"]);
+    return metricsResult;
 }
 
 // --------------------------------------------

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <faabric/state/FunctionStateMetrics.h>
 #include <faabric/state/FunctionStateRegistry.h>
 #include <faabric/state/StateKeyValue.h>
 #include <map>
@@ -32,6 +33,9 @@ class FunctionState
                                          int parallelismIdIn,
                                          const std::string& thisIPIn,
                                          bool lock = false);
+    /***
+     * Functions related to the lock of the function state
+     */
     // lock the function state and return the time to acquire the lock (ms)
     long lockWrite();
     void unlockWrite();
@@ -39,9 +43,9 @@ class FunctionState
     void unlockMasterWrite();
 
     size_t size() const;
-    void setPartitionKey(std::string key);
     void set(const uint8_t* buffer);
     void set(const uint8_t* buffer, long length, bool unlock = false);
+    void setPartitionKey(std::string key);
 
     void reSize(long length);
     void get(uint8_t* buffer);
@@ -64,6 +68,12 @@ class FunctionState
     bool rePartitionState(const std::string& newStateHost);
     void addTempParState(const uint8_t* buffer, size_t length);
     bool combineParState();
+
+    /***
+     * Fucntions related to the metrics
+     */
+    std::map<std::string, int> getMetrics();
+    
     const std::string user;
     const std::string function;
     // the default parallelism ID is 0
@@ -82,15 +92,21 @@ class FunctionState
     const std::string hostIp;
     // The master IP is the IP of the master node
     const std::string masterIp;
+
     // the key of keyValue with is partition state which is not partition input.
     std::string partitionKey;
     std::atomic<bool> fullyAllocated = false;
+
+    // The shared memory is used to store the state of the function.
     size_t sharedMemSize = 0;
     void* sharedMemory = nullptr;
-    std::unordered_map<std::string, std::vector<uint8_t>> state;
+
+    long tempLockAquireTime = 0;
+
+    // std::unordered_map<std::string, std::vector<uint8_t>> state;
+    FunctionStateMetrics metrics;
     // Configure the Size of State by using Chunks.
     void checkSizeConfigured();
-    void zeroDirtyMask();
     void configureSize();
     void reserveStorage();
     void allocateChunk(long offset, size_t length);
