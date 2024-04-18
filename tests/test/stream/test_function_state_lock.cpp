@@ -56,6 +56,22 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
     std::string function = "beta";
     int parallelism = 0;
 
+    // Register in Redis
+    faabric::redis::Redis& redis = redis::Redis::getState();
+    std::string mainKey = "main_stream_beta_0";
+    std::vector<uint8_t> mainIPBytes = faabric::util::stringToBytes(
+      faabric::util::getSystemConfig().endpointHost);
+    redis.set(mainKey, mainIPBytes);
+    // Create the function
+    {
+        auto fs = state.createFS(user, function, parallelism, "");
+        if (!fs->isMaster) {
+            throw std::runtime_error(
+              "StateServer receive create request, but created state "
+              "is not master");
+        }
+    }
+
     // Empty should be none
     size_t initialSize =
       state.getFunctionStateSize(user, function, parallelism, true);
@@ -71,19 +87,16 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
     size_t stateSize = inputBytes.size();
 
     auto fs = state.getFS(user, function, parallelism, stateSize);
-    fs->lockWrite();
-    fs->set(inputBytes.data(), stateSize);
-    fs->unlockWrite();
+    fs->set(inputBytes.data(), stateSize, true);
 
     // Get size
     size_t newSize =
       state.getFunctionStateSize(user, function, parallelism, true);
-    uint8_t* newData = fs->get();
-    fs->unlockWrite();
+    std::vector<uint8_t> newBytes(newSize);
+    fs->get(newBytes.data());
+    fs->unlockMasterWrite();
     // Get size
     REQUIRE(newSize == stateSize);
-    std::vector<uint8_t> newBytes =
-      std::vector<uint8_t>(newData, newData + stateSize);
     REQUIRE(newBytes == inputBytes);
 }
 
@@ -101,8 +114,17 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
     std::string mainKey = "main_stream_beta_0";
     std::vector<uint8_t> mainIPBytes = faabric::util::stringToBytes(LOCALHOST);
     redis.set(mainKey, mainIPBytes);
+    // Create the function
+    {
+        auto fs = remoteState.createFS(user, function, parallelism, "");
+        if (!fs->isMaster) {
+            throw std::runtime_error(
+              "StateServer receive create request, but created state "
+              "is not master");
+        }
+    }
 
-    // Empty should be none
+    // Get the iniliazed state size and lock the state.
     size_t initialSize =
       state.getFunctionStateSize(user, function, parallelism, true);
     REQUIRE(initialSize == 0);
@@ -116,47 +138,55 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
       faabric::util::serializeFuncState(inputState);
     size_t stateSize = inputBytes.size();
 
+    // Write the initialize data back and unlock
     auto fs = state.getFS(user, function, parallelism, stateSize);
-    fs->lockWrite();
     fs->set(inputBytes.data(), stateSize, true);
 
     // Get size
     size_t newSize =
       state.getFunctionStateSize(user, function, parallelism, true);
-    uint8_t* newData = fs->get();
-    remoteState.getFS(user, function, parallelism)->unlockWrite();
-
+    std::vector<uint8_t> newBytes(newSize);
+    fs->get(newBytes.data());
+    fs->unlockMasterWrite();
     // Get size
     REQUIRE(newSize == stateSize);
-    std::vector<uint8_t> newBytes =
-      std::vector<uint8_t>(newData, newData + stateSize);
     REQUIRE(newBytes == inputBytes);
 
     auto remoteFS = remoteState.getFS(user, function, parallelism);
     size_t remoteSize = remoteFS->size();
-    uint8_t* remoteData = remoteFS->get();
-    std::vector<uint8_t> remoteBytes =
-      std::vector<uint8_t>(remoteData, remoteData + remoteSize);
+    std::vector<uint8_t> remoteBytes(remoteSize);
+    remoteFS->get(remoteBytes.data());
     REQUIRE(remoteSize == stateSize);
     REQUIRE(remoteBytes == inputBytes);
 }
 
-// Testing for read size and write remotely
 TEST_CASE_METHOD(FunctionStateServerTestFixture,
                  "Test function partitioned state sizes remotely with lock",
-                 "[functionstatelock]")
+                 "[testnow]")
 {
     std::string user = "stream";
     std::string function = "beta";
+    std::string partitionKey = "kp";
     int parallelism = 0;
 
     // Register in Redis
     faabric::redis::Redis& redis = redis::Redis::getState();
     std::string mainKey = "main_stream_beta_0";
-    std::vector<uint8_t> mainIPBytes = faabric::util::stringToBytes(LOCALHOST);
-    redis.set(mainKey, mainIPBytes);
+    std::vector<uint8_t> mainIPBytes =
+    faabric::util::stringToBytes(LOCALHOST); redis.set(mainKey, mainIPBytes);
+    // Create the function
+    {
+        auto fs =
+          remoteState.createFS(user, function, parallelism, partitionKey);
+        if (!fs->isMaster) {
+            throw std::runtime_error(
+              "StateServer receive create request, but created state "
+              "is not master");
+        }
+    }
 
-    // Empty should be none
+    // Read size and lock the data
+    SPDLOG_DEBUG("Get the iniliazed state size and lock the state.");
     size_t initialSize =
       state.getFunctionStateSize(user, function, parallelism, true);
     REQUIRE(initialSize == 0);
@@ -165,26 +195,31 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
     std::map<std::string, std::vector<uint8_t>> inputState;
     inputState["k1"] = { 1, 2, 3, 4, 5 };
     inputState["k2"] = { 2, 3, 4, 5, 6, 7, 8 };
-    std::string partitionKey = "kp";
     std::map<std::string, std::vector<uint8_t>> partitionState;
     partitionState["p1"] = { 1, 2, 3, 4, 5 };
     partitionState["p2"] = { 2, 3, 4, 5, 6, 7, 8 };
-    inputState[partitionKey] = faabric::util::serializeParState(partitionState);
+    inputState[partitionKey] =
+    faabric::util::serializeParState(partitionState);
+
     std::vector<uint8_t> inputBytes =
       faabric::util::serializeFuncState(inputState);
     size_t stateSize = inputBytes.size();
 
+    // Write data back and unlock it
+    SPDLOG_DEBUG("Write data back and unlock state.");
     auto fs = state.getFS(user, function, parallelism, stateSize);
-    fs->lockWrite();
-    fs->setPartitionKey(partitionKey);
-    fs->set(inputBytes.data(), stateSize);
-    fs->unlockWrite();
+    fs->set(inputBytes.data(), stateSize, true);
 
     // Get size
+    SPDLOG_DEBUG("Get the size of the state and lock it again.");
+    fs->unlockMasterWrite();
     size_t newSize =
       state.getFunctionStateSize(user, function, parallelism, true);
+    fs = state.getFS(user, function, parallelism, newSize);
     uint8_t* newData = fs->get();
-    fs->unlockWrite();
+
+    SPDLOG_DEBUG("Get the new data now.");
+
     // Get size
     REQUIRE(newSize == stateSize);
     std::vector<uint8_t> newBytes =
@@ -203,13 +238,30 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
 // Testing for lock and unlock locally
 TEST_CASE_METHOD(FunctionStateServerTestFixture,
                  "Test function lock unlock locally",
-                 "[testnow]")
+                 "[testnowxxx]")
 {
     std::string user = "stream";
     std::string function = "beta";
+    std::string partitionKey = "kp";
     int parallelism = 0;
 
-    // Empty should be none
+    // Register in Redis
+    faabric::redis::Redis& redis = redis::Redis::getState();
+    std::string mainKey = "main_stream_beta_0";
+    std::vector<uint8_t> mainIPBytes =
+    faabric::util::stringToBytes(LOCALHOST); redis.set(mainKey, mainIPBytes);
+    // Create the function
+    {
+        auto fs =
+          remoteState.createFS(user, function, parallelism, partitionKey);
+        if (!fs->isMaster) {
+            throw std::runtime_error(
+              "StateServer receive create request, but created state "
+              "is not master");
+        }
+    }
+
+    // Get the iniliazed state size and lock the state.
     size_t initialSize =
       state.getFunctionStateSize(user, function, parallelism, true);
     REQUIRE(initialSize == 0);
@@ -217,19 +269,19 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
     // Write a function State
     std::map<std::string, std::vector<uint8_t>> inputState;
     inputState["k1"] = { 1, 2, 3, 4, 5 };
-    std::string partitionKey = "kp";
     std::map<std::string, std::vector<uint8_t>> partitionState;
     partitionState["p1"] = { 1, 2, 3, 4, 5 };
     partitionState["p2"] = { 2, 3, 4, 5, 6, 7, 8 };
-    inputState[partitionKey] = faabric::util::serializeParState(partitionState);
+    inputState[partitionKey] =
+    faabric::util::serializeParState(partitionState);
+
     std::vector<uint8_t> inputBytes =
       faabric::util::serializeFuncState(inputState);
     size_t inputSize = inputBytes.size();
 
+    // Write and unlock.
     auto fs = state.getFS(user, function, parallelism, inputSize);
-    fs->lockWrite();
-    fs->set(inputBytes.data(), inputSize);
-    fs->unlockWrite();
+    fs->set(inputBytes.data(), inputSize, true);
 
     // Create two thread, read and lock the fucntion state at the same time.
     // Function to simulate state access that requires locking
@@ -238,6 +290,7 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
         // Read and Lock the Data
         int32_t stateSize =
           state.getFunctionStateSize(user, function, parallelism, true);
+        std::vector<uint8_t> bytes(stateSize);
         auto fs1 = state.getFS(user, function, parallelism, stateSize);
         SPDLOG_DEBUG("Thread {} got state size for {}/{}-{} : {}",
                      id,
@@ -246,9 +299,8 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
                      parallelism,
                      stateSize);
         // Read the Data
-        uint8_t* data = fs->get();
+        fs->get(bytes.data());
         SPDLOG_DEBUG("Thread {} got state data", id);
-        std::vector<uint8_t> bytes(data, data + stateSize);
         std::map<std::string, std::vector<uint8_t>> tmpState =
           faabric::util::deserializeFuncState(bytes);
         std::map<std::string, std::vector<uint8_t>> tmpPartitionState =
@@ -264,7 +316,7 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
         size_t tmpSize = tmpBytes.size();
         SPDLOG_DEBUG("Thread {} going to write state data", id);
         auto fs2 = state.getFS(user, function, parallelism, tmpSize);
-        SPDLOG_DEBUG("Thread {} get the function state", id);
+        // Write data back and unlock
         fs2->set(tmpBytes.data(), tmpSize, true);
         SPDLOG_DEBUG("Thread {} finish writing state data", id);
         return size_t(0);
@@ -294,8 +346,9 @@ TEST_CASE_METHOD(FunctionStateServerTestFixture,
     expPartitionState["p2"] = { 2, 3, 4, 5, 6, 7, 8 };
     expState[partitionKey] =
       faabric::util::serializeParState(expPartitionState);
-    std::vector<uint8_t> expBytes = faabric::util::serializeFuncState(expState);
-    size_t expStateSize = expBytes.size();
+    std::vector<uint8_t> expBytes =
+    faabric::util::serializeFuncState(expState); size_t expStateSize =
+    expBytes.size();
 
     REQUIRE(finalSize == expStateSize);
     REQUIRE(finalBytes == expBytes);

@@ -19,6 +19,7 @@ FunctionState::FunctionState(const std::string& userIn,
   : user(userIn)
   , function(functionIn)
   , parallelismId(parallelismIdIn)
+  , sem(1)
   , stateSize(stateSizeIn)
   , stateRegistry(getFunctionStateRegistry())
   , hostIp(hostIpIn)
@@ -50,12 +51,46 @@ FunctionState::FunctionState(const std::string& userIn,
   : FunctionState(userIn, functionIn, parallelismIdIn, hostIpIn, 0)
 {}
 
+// long FunctionState::lockWrite()
+// {
+//     long startTime = faabric::util::getGlobalClock().epochMillis();
+//     std::cout << "Address of stateMutex: " << &stateMutex << std::endl;
+
+//     SPDLOG_TRACE("Waiting Locking write for {}: {}/{}-{}",
+//                  hostIp,
+//                  user,
+//                  function,
+//                  parallelismId);
+//     stateMutex.lock();
+//     SPDLOG_TRACE(
+//       "Gain Locked write for {}/{}-{}", user, function, parallelismId);
+//     long endTime = faabric::util::getGlobalClock().epochMillis();
+//     return endTime - startTime;
+// }
+
+// void FunctionState::unlockWrite()
+// {
+//     std::cout << "Address of stateMutex: " << &stateMutex << std::endl;
+
+//     SPDLOG_TRACE("Unlocking write for {}: {}/{}-{}",
+//                  hostIp,
+//                  user,
+//                  function,
+//                  parallelismId);
+//     stateMutex.unlock();
+//     SPDLOG_TRACE(
+//       "Unlocked write for {}/{}-{} success", user, function, parallelismId);
+// }
+
 long FunctionState::lockWrite()
 {
     long startTime = faabric::util::getGlobalClock().epochMillis();
-    SPDLOG_TRACE(
-      "Waiting Locking write for {}/{}-{}", user, function, parallelismId);
-    stateMutex.lock();
+    SPDLOG_TRACE("Waiting Locking write for {}: {}/{}-{}",
+                 hostIp,
+                 user,
+                 function,
+                 parallelismId);
+    sem.acquire();
     SPDLOG_TRACE(
       "Gain Locked write for {}/{}-{}", user, function, parallelismId);
     long endTime = faabric::util::getGlobalClock().epochMillis();
@@ -64,8 +99,16 @@ long FunctionState::lockWrite()
 
 void FunctionState::unlockWrite()
 {
-    stateMutex.unlock();
+    SPDLOG_TRACE("Unlocking write for {}: {}/{}-{}",
+                 hostIp,
+                 user,
+                 function,
+                 parallelismId);
+    sem.release();
+    SPDLOG_TRACE(
+      "Unlocked write for {}/{}-{} success", user, function, parallelismId);
 }
+
 
 long FunctionState::lockMasterWrite()
 {
@@ -159,10 +202,11 @@ void FunctionState::reSize(long length)
     // If new length is bigger than the reserved size, reallocate it.
     if (length > sharedMemSize) {
         fullyAllocated = false;
-        SPDLOG_DEBUG(
-          "The new length is bigger than the reserved size, reallocate it.");
+        SPDLOG_DEBUG("The new length is bigger than the reserved size, "
+                     "reallocate it.");
         // If the sharedMemory is created, but not initialized, the shared
-        // memory is null. In FunctionState, sizeless intialize is not allowed.
+        // memory is null. In FunctionState, sizeless intialize is not
+        // allowed.
         if (sharedMemory != nullptr) {
             if (munmap(sharedMemory, sharedMemSize) == -1) {
                 SPDLOG_ERROR("Failed to unmap shared memory: {}",
@@ -316,7 +360,8 @@ void FunctionState::pull()
     doPull();
 }
 
-// In our function, doPull is called to retrive the data from the master node.
+// In our function, doPull is called to retrive the data from the master
+// node.
 void FunctionState::doPull()
 {
     if (isMaster) {
@@ -361,7 +406,8 @@ void FunctionState::mapSharedMemory(void* destination,
     size_t length = nPages * faabric::util::HOST_PAGE_SIZE;
     allocateChunk(offset, length);
 
-    // Add a mapping of the relevant pages of shared memory onto the new region
+    // Add a mapping of the relevant pages of shared memory onto the new
+    // region
     void* result = mremap(BYTES(sharedMemory) + offset,
                           0,
                           length,
@@ -418,8 +464,8 @@ void FunctionState::setChunk(long offset, const uint8_t* buffer, size_t length)
 {
     checkSizeConfigured();
 
-    // Check we're in bounds - note that we permit chunks within the _allocated_
-    // memory
+    // Check we're in bounds - note that we permit chunks within the
+    // _allocated_ memory
     size_t chunkEnd = offset + length;
     if (chunkEnd > sharedMemSize) {
         SPDLOG_ERROR("Setting chunk out of bounds on {}/{}-{} ({} > {})",
@@ -500,8 +546,8 @@ bool FunctionState::rePartitionState(const std::string& newStateHost)
     }
     // For the paritioned stateful key, reculculate their master.
     std::map<std::string, std::vector<uint8_t>> parState = getParStateMap();
-    // record the partitioned key-value needed transferred to other hosts and
-    // the key-value stored locally.
+    // record the partitioned key-value needed transferred to other hosts
+    // and the key-value stored locally.
     std::map<std::string, std::map<std::string, std::vector<uint8_t>>>
       dataTransfer;
     std::map<std::string, std::vector<uint8_t>> newlocalParState;
@@ -592,5 +638,4 @@ size_t FunctionState::getStateSizeFromRemote(const std::string& userIn,
     size_t stateSize = stateClient.stateSize(lock);
     return stateSize;
 }
-
 }

@@ -4,6 +4,7 @@
 #include <faabric/state/FunctionStateRegistry.h>
 #include <faabric/state/StateKeyValue.h>
 #include <map>
+#include <semaphore>
 #include <set>
 #include <shared_mutex>
 #include <string>
@@ -70,7 +71,11 @@ class FunctionState
     bool isMaster = false;
 
   private:
-    std::shared_mutex stateMutex;
+    // In function state, we sue counting_semaphore to lock data. Since mutex
+    // must be lock and unlock by the same thread.
+    // TODO - the order to gain sem is not guarenteded. How to solve thread
+    // starvation.
+    std::counting_semaphore<1> sem;
     size_t stateSize;
     FunctionStateRegistry& stateRegistry;
     // The host IP is the local IP

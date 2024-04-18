@@ -322,10 +322,11 @@ std::shared_ptr<FunctionState> State::createFS(const std::string& user,
                                                const std::string& parStateKey)
 {
     if (user.empty() || func.empty()) {
-        throw std::runtime_error(fmt::format(
-          "Attempting to access state with empty user or key ({}/{})",
-          user,
-          func));
+        throw std::runtime_error(
+          fmt::format("State::createFS: Attempting to access state with empty "
+                      "user or key ({}/{})",
+                      user,
+                      func));
     }
     std::string lookupKey =
       faabric::util::keyForFunction(user, func, parallelismId);
@@ -335,9 +336,14 @@ std::shared_ptr<FunctionState> State::createFS(const std::string& user,
     if (fsMap.count(lookupKey) > 0) {
         fsMap.erase(lookupKey);
     }
+    SPDLOG_DEBUG(
+      "State::createFS: Creating function state {} for {}", lookupKey, thisIP);
     auto fs =
       std::make_shared<FunctionState>(user, func, parallelismId, thisIP);
     if (!parStateKey.empty()) {
+        SPDLOG_DEBUG("State::createFS: Setting partition key {} for {}",
+                     parStateKey,
+                     lookupKey);
         fs->setPartitionKey(parStateKey);
     }
     fsMap.emplace(lookupKey, std::move(fs));
@@ -349,10 +355,11 @@ void State::deleteFS(const std::string& user,
                      int32_t parallelismId)
 {
     if (user.empty() || func.empty()) {
-        throw std::runtime_error(fmt::format(
-          "Attempting to access state with empty user or key ({}/{})",
-          user,
-          func));
+        throw std::runtime_error(
+          fmt::format("State::createFS: Attempting to access state with empty "
+                      "user or key ({}/{})",
+                      user,
+                      func));
     }
 
     std::string lookupKey =
