@@ -26,7 +26,7 @@ class StateAwareScheduler final : public BatchScheduler
       const InFlightReqs& inFlightReqs,
       std::shared_ptr<faabric::BatchExecuteRequest> req) override;
 
-    // put here (public) only for tests.
+    // the following functions are public only for tests.
     std::shared_ptr<std::map<std::string, std::string>>
     increaseFunctionParallelism(const std::string& userFunction,
                                 HostMap& hostMap);
@@ -36,6 +36,9 @@ class StateAwareScheduler final : public BatchScheduler
       std::shared_ptr<std::map<std::string, std::string>> oldStateHost);
 
     void flushStateInfo();
+
+    std::map<std::string, std::map<std::string, int>> getAllMetrics(
+      HostMap& hostMap);
 
   private:
     bool isFirstDecisionBetter(

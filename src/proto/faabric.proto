@@ -309,3 +309,18 @@ message FunctionStateTransferRequest{
     string pInputKey = 6;
     string pStateKey = 7;
 }
+
+message FunctionStateMetricResponse{
+    string host = 1;
+    
+    message FunctionStateMetric{
+        string userFuncPar = 1;
+        string user = 2;
+        string func = 3;
+        uint32 parallelismId = 4;
+        uint32 lockBlockTime = 5;
+        uint32 lockHoldTime = 6;
+    }
+
+    repeated FunctionStateMetric metrics = 2;
+}

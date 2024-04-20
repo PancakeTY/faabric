@@ -12,7 +12,6 @@ struct FunctionStateMetrics
 
     // Record the latest 100 time that function holding lock until release.
     util::FixedSizeQueue<int> lockHoldTimeQueue{100};
-
 };
 
 }

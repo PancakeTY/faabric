@@ -178,4 +178,26 @@ void FunctionStateClient::combineParState()
     syncSend(faabric::state::StateCalls::FunctionParCombine, &request, &resp);
 }
 
+std::map<std::string, std::map<std::string, int>>
+FunctionStateClient::getMetrics()
+{
+    logRequest("functionstate-getMetrics");
+
+    faabric::EmptyRequest request;
+    faabric::FunctionStateMetricResponse response;
+    syncSend(faabric::state::StateCalls::FunctionMetrics, &request, &response);
+
+    // Transform the result to the expected format
+    size_t metricsSize = response.metrics_size();
+    std::map<std::string, std::map<std::string, int>> metricsResult;
+    for (size_t i = 0; i < metricsSize; i++) {
+        std::string userFuncPar = response.metrics(i).userfuncpar();
+        metricsResult[userFuncPar]["lockBlockTime"] =
+          response.metrics(i).lockblocktime();
+        metricsResult[userFuncPar]["lockHoldTime"] =
+          response.metrics(i).lockholdtime();
+    }
+    return metricsResult;
+}
+
 }

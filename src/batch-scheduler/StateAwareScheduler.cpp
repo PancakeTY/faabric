@@ -13,7 +13,7 @@ namespace faabric::batch_scheduler {
 // We register the function state in the functionStateRegister map.
 void StateAwareScheduler::funcStateInitializer(
   std::map<std::string, std::tuple<std::string, std::string>> otherRegister)
-{   
+{
     funcStateRegMap["stream_function_state"] = std::make_tuple("", "");
     funcStateRegMap["stream_function_parstate"] =
       std::make_tuple("partitionInputKey", "partitionStateKey");
@@ -429,6 +429,11 @@ std::shared_ptr<SchedulingDecision> StateAwareScheduler::makeSchedulingDecision(
         // Otherwise, try to assign it to the host that has the function state.
         int parallelismId =
           getParallelismIndex(userFunc, req->messages(msgIdx));
+        // Register the parallelismIdx to it. It is safe to register there. Even
+        // if the Scheduling failed this time, the next scheduling will
+        // overwrite it.
+        req->mutable_messages(msgIdx)->set_parallelismid(parallelismId);
+
         std::string hostKey = userFunc + "_" + std::to_string(parallelismId);
         // If no key is found, ignore it.
         if (stateHost.find(hostKey) == stateHost.end()) {
@@ -664,12 +669,23 @@ bool StateAwareScheduler::repartitionParitionedState(
     return true;
 }
 
-void StateAwareScheduler::flushStateInfo(){
+void StateAwareScheduler::flushStateInfo()
+{
     SPDLOG_DEBUG("Flushing state information");
     functionParallelism.clear();
     functionCounter.clear();
     stateHost.clear();
     statePartitionBy.clear();
+}
+
+std::map<std::string, std::map<std::string, int>>
+StateAwareScheduler::getAllMetrics(HostMap& hostMap)
+{
+    std::map<std::string, std::map<std::string, int>> metricsMap;
+    // Get the average process time of each function (function and functionPar).
+
+    // Get the congetsion, hold time of each function state.
+    return metricsMap;
 }
 
 } // namespace faabric::batch_scheduler

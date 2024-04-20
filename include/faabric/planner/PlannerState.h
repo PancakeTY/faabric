@@ -2,6 +2,7 @@
 
 #include <faabric/batch-scheduler/BatchScheduler.h>
 #include <faabric/batch-scheduler/SchedulingDecision.h>
+#include <faabric/planner/FunctionMetrics.h>
 #include <faabric/planner/planner.pb.h>
 #include <faabric/proto/faabric.pb.h>
 
@@ -36,6 +37,20 @@ struct PlannerState
 
     // Helper coutner of the total number of migrations
     std::atomic<int> numMigrations = 0;
-    
-    };
+
+    // The metrics for each function-parallelismId
+    // Map<User-Function-ParallelismId, Metrics>
+    std::map<std::string, std::shared_ptr<FunctionMetrics>> functionMetrics;
+
+    // The metrics for the whole chain function application (Same app Id)
+    // For chain functions, it is the metrics from the first function is invoked
+    // until the last function is finished.
+    // We don't record parallelism at first since the new BatchRequest can has
+    // multiple [chain functions source], they belong to different parallelism.
+    // source_1 -> func1_1 -> func2_2 and source_2 -> func1_2 -> func2_2
+    // Map<First(User-Function), Metrics>
+    // TODO - change it to the chain function id instread of appId
+    std::map<std::string, std::shared_ptr<FunctionMetrics>>
+      chainFunctionMetrics;
+};
 }

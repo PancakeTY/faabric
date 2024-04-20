@@ -29,6 +29,7 @@ enum StateCalls
     FunctionLock = 14,
     FunctionUnlock = 15,
     FunctionCreate = 16,
+    FunctionMetrics = 17,
 };
 
 class State
@@ -61,15 +62,11 @@ class State
                                 int32_t parallelismId,
                                 bool lock = false);
 
-    // // The folowing function is designed for Function State with Lock
-    // size_t getFunctionStateSizeLock(const std::string& user,
-    //                                 const std::string& func,
-    //                                 int32_t parallelismId);
-
-    std::shared_ptr<FunctionState> createFS(const std::string& user,
-                                            const std::string& func,
-                                            int32_t parallelismId,
-                                            const std::string& parStateKey = "");
+    std::shared_ptr<FunctionState> createFS(
+      const std::string& user,
+      const std::string& func,
+      int32_t parallelismId,
+      const std::string& parStateKey = "");
 
     std::shared_ptr<FunctionState> getFS(const std::string& user,
                                          const std::string& func,
@@ -88,6 +85,9 @@ class State
     void deleteFS(const std::string& user,
                   const std::string& func,
                   int32_t parallelismId);
+
+    // Get all the metrics of the master function states from this host.
+    std::map<std::string, std::map<std::string, int>> getFSMetrics();
 
   private:
     const std::string thisIP;
