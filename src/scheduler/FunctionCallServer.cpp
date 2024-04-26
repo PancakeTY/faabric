@@ -26,6 +26,10 @@ void FunctionCallServer::doAsyncRecv(transport::Message& message)
             recvExecuteFunctions(message.udata());
             break;
         }
+        case faabric::scheduler::FunctionCalls::ExecuteFunctionsLazy: {
+            recvExecuteFunctionsLazy(message.udata());
+            break;
+        }
         case faabric::scheduler::FunctionCalls::SetMessageResult: {
             recvSetMessageResult(message.udata());
             break;
@@ -83,6 +87,23 @@ void FunctionCallServer::recvExecuteFunctions(std::span<const uint8_t> buffer)
     }
 
     scheduler.executeBatch(
+      std::make_shared<faabric::BatchExecuteRequest>(parsedMsg));
+}
+
+void FunctionCallServer::recvExecuteFunctionsLazy(std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::BatchExecuteRequest, buffer.data(), buffer.size())
+
+    // TODO - we can set the queue time here
+    // This host has now been told to execute these functions no matter what
+    for (int i = 0; i < parsedMsg.messages_size(); i++) {
+        parsedMsg.mutable_messages()->at(i).set_starttimestamp(
+          faabric::util::getGlobalClock().epochMillis());
+        parsedMsg.mutable_messages()->at(i).set_executedhost(
+          faabric::util::getSystemConfig().endpointHost);
+    }
+
+    scheduler.executeBatchLazy(
       std::make_shared<faabric::BatchExecuteRequest>(parsedMsg));
 }
 

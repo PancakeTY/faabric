@@ -47,6 +47,9 @@ void SystemConfig::initialise()
     defaultMpiWorldSize =
       this->getSystemConfIntParam("DEFAULT_MPI_WORLD_SIZE", "5");
 
+    // STREAM
+    batchProcess = getEnvVar("BATCH_PROCESS", "on");
+
     // Endpoint
     endpointInterface = getEnvVar("ENDPOINT_INTERFACE", "");
     endpointHost = getEnvVar("ENDPOINT_HOST", "");
@@ -118,6 +121,9 @@ void SystemConfig::print()
 
     SPDLOG_INFO("--- MPI ---");
     SPDLOG_INFO("DEFAULT_MPI_WORLD_SIZE  {}", defaultMpiWorldSize);
+
+    SPDLOG_INFO("--- STREAM ---");
+    SPDLOG_INFO("BATCH_PROCESS              {}", batchProcess);
 
     SPDLOG_INFO("--- Endpoint ---");
     SPDLOG_INFO("ENDPOINT_INTERFACE         {}", endpointInterface);

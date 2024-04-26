@@ -31,6 +31,7 @@
 #define DEFAULT_MAX_SNAP_SIZE (4 * ONE_GB)
 
 #define POOL_SHUTDOWN -1
+#define STREAM_BATCH -2
 
 namespace faabric::executor {
 
@@ -212,6 +213,79 @@ void Executor::executeTasks(std::vector<int> msgIdxs,
     }
 }
 
+// TODO(thread-opt): get rid of this method here and move to
+// PlannerClient::callFunctions()
+void Executor::executeBatchTasks(
+  std::shared_ptr<faabric::BatchExecuteRequest> req)
+{
+    const std::string funcStr = faabric::util::funcToString(req);
+    auto& firstMsg = req->mutable_messages()->at(0);
+    const std::string userFuncPar = firstMsg.user() + "_" +
+                                    firstMsg.function() + "_" +
+                                    std::to_string(firstMsg.parallelismid());
+    std::string msgIds = "";
+    for (int i = 0; i < req->messages_size(); i++) {
+        msgIds += std::to_string(req->messages(i).id()) + " ";
+    }
+    SPDLOG_TRACE("{} executing appid: {}/ msgIds: {} of {} tasks of {}",
+                 id,
+                 req->appid(),
+                 msgIds,
+                 req->messages_size(),
+                 userFuncPar);
+
+    // Note that this lock is specific to this executor, so will only block
+    // when multiple threads are trying to schedule tasks. This will only
+    // happen when child threads of the same function are competing to
+    // schedule more threads, hence is rare so we can afford to be
+    // conservative here.
+    faabric::util::UniqueLock lock(threadsMutex);
+
+    // Update the last-executed time for this executor
+    lastExec = faabric::util::startTimer();
+
+    std::string thisHost = faabric::util::getSystemConfig().endpointHost;
+
+    std::string snapshotKey = firstMsg.snapshotkey();
+
+    // Non-threads need to restore from a snapshot if they are given a
+    // snapshot key.
+    if (!firstMsg.snapshotkey().empty()) {
+        // Restore from snapshot if provided
+        std::string snapshotKey = firstMsg.snapshotkey();
+        SPDLOG_DEBUG("Restoring {} from snapshot {}", funcStr, snapshotKey);
+        restore(snapshotKey);
+    } else {
+        SPDLOG_TRACE(
+          "Not restoring {}. threads=false, key={}", funcStr, snapshotKey);
+    }
+
+    // Initialise batch counter ??? what is the use of batch counter???
+    batchCounter.fetch_add(1, std::memory_order_release);
+
+    if (availablePoolThreads.empty()) {
+        SPDLOG_ERROR("No available thread pool threads (size: {})",
+                     threadPoolSize);
+        throw std::runtime_error("No available thread pool threads!");
+    }
+
+    // Take next from those that are available
+    int threadPoolIdx = *availablePoolThreads.begin();
+    availablePoolThreads.erase(threadPoolIdx);
+
+    SPDLOG_TRACE("Assigned current batch functions to thread {}",
+                 threadPoolIdx);
+
+    // Enqueue the task
+    threadTaskQueues[threadPoolIdx].enqueue(ExecutorTask(STREAM_BATCH, req));
+
+    // Lazily create the thread
+    if (threadPoolThreads.at(threadPoolIdx) == nullptr) {
+        threadPoolThreads.at(threadPoolIdx) = std::make_shared<std::jthread>(
+          std::bind_front(&Executor::threadPoolThread, this), threadPoolIdx);
+    }
+}
+
 long Executor::getMillisSinceLastExec()
 {
     return faabric::util::getTimeDiffMillis(lastExec);
@@ -334,6 +408,74 @@ void Executor::threadPoolThread(std::stop_token st, int threadPoolIdx)
         if (task.messageIndex == POOL_SHUTDOWN) {
             SPDLOG_DEBUG("Killing thread pool thread {}:{}", id, threadPoolIdx);
             return;
+        }
+
+        // If we want to execute batch-processing
+        if (task.messageIndex == STREAM_BATCH) {
+            SPDLOG_TRACE(
+              "Thread {}:{} executing task appid: {} (batch processing)",
+              id,
+              threadPoolIdx,
+              task.req->appid());
+            // Set up context
+            ExecutorContext::set(this, task.req, task.messageIndex);
+            // Execute the task
+            int32_t returnValue;
+            try {
+                returnValue =
+                  executeTask(threadPoolIdx, task.messageIndex, task.req);
+            } catch (const std::exception& ex) {
+                returnValue = 1;
+
+                std::string errorMessage =
+                  fmt::format("Task threw exception. What: {}", ex.what());
+                SPDLOG_ERROR(errorMessage);
+                for (int i = 0; i < task.req->messages_size(); i++) {
+                    task.req->mutable_messages()->at(i).set_outputdata(
+                      errorMessage);
+                }
+            }
+            // Unset context
+            ExecutorContext::unset();
+
+            // Set the return value
+            for (int i = 0; i < task.req->messages_size(); i++) {
+                task.req->mutable_messages()->at(i).set_returnvalue(
+                  returnValue);
+            }
+
+            std::atomic_thread_fence(std::memory_order_release);
+            int oldTaskCount = 0;
+            bool isLastThreadInExecutor = false;
+            oldTaskCount = batchCounter.fetch_sub(1);
+            isLastThreadInExecutor = oldTaskCount == 1;
+            assert(oldTaskCount >= 1);
+
+            faabric::Message firstMsg = task.req->messages().at(0);
+            SPDLOG_TRACE("Task {} finished by thread {}:{} ({} left)",
+                         faabric::util::funcToString(firstMsg, true),
+                         id,
+                         threadPoolIdx,
+                         oldTaskCount - 1);
+
+            if (isLastThreadInExecutor) {
+                reset(firstMsg);
+                releaseClaim();
+            }
+
+            // Return this thread index to the pool available for scheduling
+            {
+                faabric::util::UniqueLock lock(threadsMutex);
+                availablePoolThreads.insert(threadPoolIdx);
+            }
+
+            // Set normal function result
+            for (int i = 0; i < task.req->messages_size(); i++) {
+                faabric::planner::getPlannerClient().setMessageResult(
+                  std::make_shared<faabric::Message>(
+                    task.req->mutable_messages()->at(i)));
+            }
+            continue;
         }
 
         assert(task.req->messages_size() >= task.messageIndex + 1);

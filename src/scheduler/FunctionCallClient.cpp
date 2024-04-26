@@ -2,6 +2,7 @@
 #include <faabric/scheduler/FunctionCallClient.h>
 #include <faabric/transport/common.h>
 #include <faabric/transport/macros.h>
+#include <faabric/util/config.h>
 #include <faabric/util/queue.h>
 #include <faabric/util/testing.h>
 
@@ -87,6 +88,9 @@ void FunctionCallClient::executeFunctions(
     if (faabric::util::isMockMode()) {
         faabric::util::UniqueLock lock(mockMutex);
         batchMessages.emplace_back(host, req);
+    } else if (faabric::util::getSystemConfig().batchProcess == "on") {
+        asyncSend(faabric::scheduler::FunctionCalls::ExecuteFunctionsLazy,
+                  req.get());
     } else {
         asyncSend(faabric::scheduler::FunctionCalls::ExecuteFunctions,
                   req.get());

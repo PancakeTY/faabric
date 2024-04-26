@@ -1,7 +1,9 @@
 #include <faabric/util/serialization.h>
 
 #include <functional>
-#include <algorithm>
+#include <cstring>  // For memcpy
+#include <iomanip>  // For std::setw and std::setfill
+
 // THERE MUST BE SAME AS CPP LIMFAASM UTIL SERIALIZATION
 namespace faabric::util {
 
@@ -78,14 +80,17 @@ std::map<std::string, int> uint8VToMapInt(const std::vector<uint8_t>& bytes)
     return map;
 }
 
-std::vector<uint8_t> serializeMapBinary(const std::map<std::string, std::string>& map) {
+std::vector<uint8_t> serializeMapBinary(
+  const std::map<std::string, std::string>& map)
+{
     std::vector<uint8_t> buffer;
 
     for (const auto& [key, value] : map) {
         // Serialize key size
         uint32_t keySize = key.size();
         uint8_t* keySizeBytes = reinterpret_cast<uint8_t*>(&keySize);
-        buffer.insert(buffer.end(), keySizeBytes, keySizeBytes + sizeof(keySize));
+        buffer.insert(
+          buffer.end(), keySizeBytes, keySizeBytes + sizeof(keySize));
 
         // Serialize key
         buffer.insert(buffer.end(), key.begin(), key.end());
@@ -93,7 +98,8 @@ std::vector<uint8_t> serializeMapBinary(const std::map<std::string, std::string>
         // Serialize value size
         uint32_t valueSize = value.size();
         uint8_t* valueSizeBytes = reinterpret_cast<uint8_t*>(&valueSize);
-        buffer.insert(buffer.end(), valueSizeBytes, valueSizeBytes + sizeof(valueSize));
+        buffer.insert(
+          buffer.end(), valueSizeBytes, valueSizeBytes + sizeof(valueSize));
 
         // Serialize value
         buffer.insert(buffer.end(), value.begin(), value.end());
@@ -102,14 +108,18 @@ std::vector<uint8_t> serializeMapBinary(const std::map<std::string, std::string>
     return buffer;
 }
 
-std::map<std::string, std::string> deserializeMapBinary(const std::vector<uint8_t>& buffer) {
+std::map<std::string, std::string> deserializeMapBinary(
+  const std::vector<uint8_t>& buffer)
+{
     std::map<std::string, std::string> map;
     size_t index = 0;
 
     while (index < buffer.size()) {
         // Deserialize key size
         uint32_t keySize;
-        std::copy_n(&buffer[index], sizeof(keySize), reinterpret_cast<uint8_t*>(&keySize));
+        std::copy_n(&buffer[index],
+                    sizeof(keySize),
+                    reinterpret_cast<uint8_t*>(&keySize));
         index += sizeof(keySize);
 
         // Deserialize key
@@ -118,7 +128,9 @@ std::map<std::string, std::string> deserializeMapBinary(const std::vector<uint8_
 
         // Deserialize value size
         uint32_t valueSize;
-        std::copy_n(&buffer[index], sizeof(valueSize), reinterpret_cast<uint8_t*>(&valueSize));
+        std::copy_n(&buffer[index],
+                    sizeof(valueSize),
+                    reinterpret_cast<uint8_t*>(&valueSize));
         index += sizeof(valueSize);
 
         // Deserialize value
@@ -201,6 +213,103 @@ std::map<std::string, std::vector<uint8_t>> deserializeParState(
   const std::vector<uint8_t>& bytes)
 {
     return deserializeFuncState(bytes);
+}
+
+// Helper function to append an unsigned 32-bit integer to the buffer
+void appendUint32(std::vector<uint8_t>& buffer, uint32_t value)
+{
+    uint8_t temp[4];
+    std::memcpy(temp, &value, 4);
+    buffer.insert(buffer.end(), temp, temp + 4);
+}
+
+// Serialize a string into a vector of uint8_t
+void serializeString(std::vector<uint8_t>& buffer, const std::string& str)
+{
+    appendUint32(buffer, static_cast<uint32_t>(str.size())); // Length of string
+    buffer.insert(buffer.end(), str.begin(), str.end()); // String characters
+}
+
+// Deserialize a string from a vector of uint8_t
+std::string deserializeString(const std::vector<uint8_t>& buffer, size_t& index)
+{
+    uint32_t length = *reinterpret_cast<const uint32_t*>(&buffer[index]);
+    index += 4;
+    std::string str(buffer.begin() + index, buffer.begin() + index + length);
+    index += length;
+    return str;
+}
+
+// Serialize a map of strings
+void serializeMap(std::vector<uint8_t>& buffer,
+                  const std::map<std::string, std::string>& map)
+{
+    appendUint32(buffer, static_cast<uint32_t>(map.size())); // Number of pairs
+    for (const auto& pair : map) {
+        serializeString(buffer, pair.first);  // Serialize key
+        serializeString(buffer, pair.second); // Serialize value
+    }
+}
+
+// Deserialize a map of strings
+std::map<std::string, std::string> deserializeMap(
+  const std::vector<uint8_t>& buffer,
+  size_t& index)
+{
+    // Handle empty buffer or index out of range
+    if (buffer.size() < index + 4) {
+        return {};  // Return an empty map if there's not enough data
+    }
+
+    uint32_t numPairs = *reinterpret_cast<const uint32_t*>(&buffer[index]);
+    index += 4;
+    std::map<std::string, std::string> map;
+
+    for (uint32_t i = 0; i < numPairs; ++i) {
+        if (buffer.size() < index + 1) {
+            throw std::runtime_error("Buffer too small for expected number of pairs");
+        }
+        std::string key = deserializeString(buffer, index);
+        std::string value = deserializeString(buffer, index);
+        map[std::move(key)] = std::move(value);
+    }
+    return map;
+}
+
+// Serialize a nested map
+void serializeNestedMap(
+  std::vector<uint8_t>& buffer,
+  const std::map<std::string, std::map<std::string, std::string>>& nestedMap)
+{
+    appendUint32(buffer, static_cast<uint32_t>(nestedMap.size())); // Number of outer pairs
+    for (const auto& pair : nestedMap) {
+        serializeString(buffer, pair.first); // Serialize outer key
+        serializeMap(buffer, pair.second);   // Serialize inner map
+    }
+}
+
+// Deserialize a nested map
+std::map<std::string, std::map<std::string, std::string>> deserializeNestedMap(
+  const std::vector<uint8_t>& buffer,
+  size_t& index)
+{
+    if (buffer.size() < index + 4) {
+        return {};  // Return an empty nested map if there's not enough data
+    }
+
+    uint32_t numPairs = *reinterpret_cast<const uint32_t*>(&buffer[index]);
+    index += 4;
+    std::map<std::string, std::map<std::string, std::string>> nestedMap;
+
+    for (uint32_t i = 0; i < numPairs; ++i) {
+        if (buffer.size() < index + 1) {
+            throw std::runtime_error("Buffer too small for expected number of outer pairs");
+        }
+        std::string key = deserializeString(buffer, index);
+        std::map<std::string, std::string> valueMap = deserializeMap(buffer, index);
+        nestedMap[std::move(key)] = std::move(valueMap);
+    }
+    return nestedMap;
 }
 
 }

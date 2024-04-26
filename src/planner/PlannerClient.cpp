@@ -421,7 +421,8 @@ void PlannerClient::registerFunctionState(
     syncSend(PlannerCalls::RegisterFunctionState, req.get(), &resp);
 
     if (resp.status().status() != ResponseStatus_Status_OK) {
-        throw std::runtime_error("Error registering function state with planner!");
+        throw std::runtime_error(
+          "Error registering function state with planner!");
     }
 }
 

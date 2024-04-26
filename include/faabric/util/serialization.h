@@ -17,7 +17,8 @@ uint32_t uint8VToUint32(const std::vector<uint8_t>& bytes);
 std::vector<uint8_t> uint32ToUint8V(uint32_t value);
 
 // Serialiazion and Deserialization from uint8_t vetors to Map<string,string>
-std::vector<uint8_t> serializeMapBinary(const std::map<std::string, std::string>& map);
+std::vector<uint8_t> serializeMapBinary(
+  const std::map<std::string, std::string>& map);
 std::map<std::string, std::string> deserializeMapBinary(
   const std::vector<uint8_t>& bytes);
 
@@ -37,4 +38,33 @@ std::vector<uint8_t> serializeParState(
   const std::map<std::string, std::vector<uint8_t>>& map);
 std::map<std::string, std::vector<uint8_t>> deserializeParState(
   const std::vector<uint8_t>& bytes);
+
+// Serialize a string into a vector of uint8_t
+void serializeString(std::vector<uint8_t>& buffer,
+                            const std::string& str);
+
+// Deserialize a string from a vector of uint8_t
+std::string deserializeString(const std::vector<uint8_t>& buffer,
+                                     size_t& index);
+
+// Serialize a map of strings
+void serializeMap(std::vector<uint8_t>& buffer,
+                         const std::map<std::string, std::string>& map);
+
+// Deserialize a map of strings
+std::map<std::string, std::string> deserializeMap(
+  const std::vector<uint8_t>& buffer,
+  size_t& index);
+
+// Serialize a nested map
+void serializeNestedMap(
+  std::vector<uint8_t>& buffer,
+  const std::map<std::string, std::map<std::string, std::string>>& nestedMap);
+
+// Deserialize a nested map
+std::map<std::string, std::map<std::string, std::string>>
+deserializeNestedMap(const std::vector<uint8_t>& buffer, size_t& index);
+
+// Helper function to append an unsigned 32-bit integer to the buffer
+void appendUint32(std::vector<uint8_t>& buffer, uint32_t value);
 }

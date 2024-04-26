@@ -7,5 +7,6 @@ enum FunctionCalls
     ExecuteFunctions = 1,
     Flush = 2,
     SetMessageResult = 3,
+    ExecuteFunctionsLazy = 4,
 };
 }

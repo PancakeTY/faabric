@@ -31,6 +31,9 @@ class Executor
     void executeTasks(std::vector<int> msgIdxs,
                       std::shared_ptr<faabric::BatchExecuteRequest> req);
 
+    // Execute all the messages in this request in one invocation.
+    void executeBatchTasks(std::shared_ptr<faabric::BatchExecuteRequest> req);
+
     virtual void shutdown();
 
     virtual void reset(faabric::Message& msg);

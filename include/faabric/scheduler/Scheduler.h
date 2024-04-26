@@ -31,6 +31,21 @@ class SchedulerReaperThread : public faabric::util::PeriodicBackgroundThread
     void doWork() override;
 };
 
+/*
+ * A queue stores the uninvoked requests.
+ */
+class BatchQueue
+{
+  public:
+    BatchQueue(std::string userFuncParIn){
+        userFuncPar = userFuncParIn;
+        lastInvokeTime = faabric::util::getGlobalClock().epochMillis();
+    }
+    std::string userFuncPar;
+    long lastInvokeTime;
+    std::queue<std::shared_ptr<faabric::Message>> batchQueue;
+};
+
 class Scheduler
 {
   public:
@@ -39,6 +54,8 @@ class Scheduler
     ~Scheduler();
 
     void executeBatch(std::shared_ptr<faabric::BatchExecuteRequest> req);
+
+    void executeBatchLazy(std::shared_ptr<faabric::BatchExecuteRequest> req);
 
     void reset();
 
@@ -137,6 +154,9 @@ class Scheduler
 
     // ---- Point-to-point ----
     faabric::transport::PointToPointBroker& broker;
+
+    // A queue stores the uninvoked requests: MAP<UserFuncPar, Queue>
+    std::map<std::string, BatchQueue> waitingQueues;
 };
 
 }

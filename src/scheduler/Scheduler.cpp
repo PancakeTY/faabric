@@ -12,6 +12,7 @@
 #include <faabric/util/config.h>
 #include <faabric/util/environment.h>
 #include <faabric/util/func.h>
+#include <faabric/util/gids.h>
 #include <faabric/util/locks.h>
 #include <faabric/util/logging.h>
 #include <faabric/util/snapshot.h>
@@ -301,6 +302,64 @@ void Scheduler::executeBatch(std::shared_ptr<faabric::BatchExecuteRequest> req)
             std::shared_ptr<faabric::executor::Executor> e =
               claimExecutor(localMsg, lock);
             e->executeTasks({ i }, req);
+        }
+    }
+}
+
+void Scheduler::executeBatchLazy(
+  std::shared_ptr<faabric::BatchExecuteRequest> req)
+{
+    faabric::util::FullLock lock(mx);
+
+    bool isThreads = req->type() == faabric::BatchExecuteRequest::THREADS;
+    int nMessages = req->messages_size();
+
+    // Records for tests - copy messages before execution to avoid races
+    if (faabric::util::isTestMode()) {
+        for (int i = 0; i < nMessages; i++) {
+            recordedMessages.emplace_back(req->messages().at(i));
+        }
+    }
+
+    // We don't support THREADS now, Since, I don't know how it works :).
+    if (isThreads) {
+        SPDLOG_ERROR("THREADS is not supported in callBatchFunctions");
+        throw std::runtime_error(
+          "THREADS is not supported in callBatchFunctions");
+    }
+
+    // A request might contains the same function with different parallelism.
+    for (size_t i = 0; i < nMessages; i++) {
+        std::shared_ptr<faabric::Message> tempMsg =
+          std::make_shared<faabric::Message>(req->messages(i));
+        std::string userFuncPar = tempMsg->user() + "_" + tempMsg->function() +
+                                  "_" +
+                                  std::to_string(tempMsg->parallelismid());
+        auto [iterator, inserted] =
+          waitingQueues.emplace(userFuncPar, userFuncPar);
+        iterator->second.batchQueue.push(std::move(tempMsg));
+    }
+
+    // Invoke the waiting queue if condition is met.
+    for (auto& [userFuncPar, waitingBatch] : waitingQueues) {
+        if (waitingBatch.batchQueue.size() >= 3) {
+            auto fisrtMsg = waitingBatch.batchQueue.front();
+            // Generate new BatchExecuteRequest
+            auto newReq = faabric::util::batchExecFactory();
+            newReq->set_user(fisrtMsg->user());
+            newReq->set_function(fisrtMsg->function());
+            while (!waitingBatch.batchQueue.empty()) {
+                auto* message = newReq->add_messages();
+                *message = std::move(*waitingBatch.batchQueue.front());
+                waitingBatch.batchQueue.pop();
+            }
+            // Claim new Executor, we can bound the first msg here, since claim
+            // only needs the user and function of Message.
+            faabric::Message& localMsg = newReq->mutable_messages()->at(0);
+            std::shared_ptr<faabric::executor::Executor> e =
+              claimExecutor(localMsg, lock);
+            // Execute the tasks
+            e->executeBatchTasks(newReq);
         }
     }
 }

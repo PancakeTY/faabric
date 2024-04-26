@@ -25,6 +25,8 @@ class FunctionCallServer final
 
     void recvExecuteFunctions(std::span<const uint8_t> buffer);
 
+    void recvExecuteFunctionsLazy(std::span<const uint8_t> buffer);
+
     void recvSetMessageResult(std::span<const uint8_t> buffer);
 };
 }

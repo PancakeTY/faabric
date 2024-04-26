@@ -52,6 +52,15 @@ class ExecutorContext
         return req->mutable_messages()->at(msgIdx);
     }
 
+    faabric::BatchExecuteRequest& getBatch()
+    {
+        if (req == nullptr) {
+            throw std::runtime_error(
+              "Getting batch when no request set in context");
+        }
+        return *req;
+    }
+
     int getMsgIdx() { return msgIdx; }
 
   private:

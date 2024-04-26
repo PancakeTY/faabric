@@ -37,6 +37,9 @@ class SystemConfig
     // MPI
     int defaultMpiWorldSize;
 
+    // STREAM
+    std::string batchProcess;
+
     // Endpoint
     std::string endpointInterface;
     std::string endpointHost;
