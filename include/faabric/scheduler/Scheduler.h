@@ -37,13 +37,34 @@ class SchedulerReaperThread : public faabric::util::PeriodicBackgroundThread
 class BatchQueue
 {
   public:
-    BatchQueue(std::string userFuncParIn){
+    BatchQueue(std::string userFuncParIn)
+    {
         userFuncPar = userFuncParIn;
-        lastInvokeTime = faabric::util::getGlobalClock().epochMillis();
+        // Last time is the lastest time bewtween earliest insert time and the
+        // lastest invoke time.
+        lastTime = faabric::util::getGlobalClock().epochMillis();
     }
     std::string userFuncPar;
-    long lastInvokeTime;
+    long lastTime;
     std::queue<std::shared_ptr<faabric::Message>> batchQueue;
+    void insertMsg(std::shared_ptr<faabric::Message> msg)
+    {
+        // If the queue is empty, which means insert the first msg, reset the
+        // invoke time.
+        if (batchQueue.size() == 0) {
+            resetlastTime();
+        }
+        batchQueue.push(msg);
+    }
+    int getTimeInterval()
+    {
+        return faabric::util::getGlobalClock().epochMillis() -
+               lastTime;
+    }
+    void resetlastTime()
+    {
+        lastTime = faabric::util::getGlobalClock().epochMillis();
+    }
 };
 
 class Scheduler

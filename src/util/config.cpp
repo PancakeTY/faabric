@@ -49,7 +49,9 @@ void SystemConfig::initialise()
 
     // STREAM
     batchProcess = getEnvVar("BATCH_PROCESS", "on");
-
+    batchSize =  this->getSystemConfIntParam("BATCH_SIZE", "2");
+    batchInterval = this->getSystemConfIntParam("BATCH_INTERVAL", "10000");
+    
     // Endpoint
     endpointInterface = getEnvVar("ENDPOINT_INTERFACE", "");
     endpointHost = getEnvVar("ENDPOINT_HOST", "");

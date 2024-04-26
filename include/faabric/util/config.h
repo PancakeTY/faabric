@@ -39,6 +39,9 @@ class SystemConfig
 
     // STREAM
     std::string batchProcess;
+    int batchSize;
+    // batchInterval unit: ms
+    int batchInterval;
 
     // Endpoint
     std::string endpointInterface;

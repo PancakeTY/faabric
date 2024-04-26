@@ -337,12 +337,18 @@ void Scheduler::executeBatchLazy(
                                   std::to_string(tempMsg->parallelismid());
         auto [iterator, inserted] =
           waitingQueues.emplace(userFuncPar, userFuncPar);
-        iterator->second.batchQueue.push(std::move(tempMsg));
+        iterator->second.insertMsg(std::move(tempMsg));
     }
 
     // Invoke the waiting queue if condition is met.
     for (auto& [userFuncPar, waitingBatch] : waitingQueues) {
-        if (waitingBatch.batchQueue.size() >= 3) {
+        // If the batchQueue size or the waiting time is higher than the
+        // threashold, execute the tasks.
+        if (waitingBatch.batchQueue.size() == 0) {
+            continue;
+        }
+        if (waitingBatch.batchQueue.size() >= conf.batchSize ||
+            waitingBatch.getTimeInterval() >= conf.batchInterval) {
             auto fisrtMsg = waitingBatch.batchQueue.front();
             // Generate new BatchExecuteRequest
             auto newReq = faabric::util::batchExecFactory();
@@ -360,6 +366,9 @@ void Scheduler::executeBatchLazy(
               claimExecutor(localMsg, lock);
             // Execute the tasks
             e->executeBatchTasks(newReq);
+            // Reset the lastTime. It will be updated when inserted next time.
+            // We reset here just in case.
+            waitingBatch.resetlastTime();
         }
     }
 }
