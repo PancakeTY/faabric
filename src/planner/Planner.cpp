@@ -758,6 +758,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
                       std::make_shared<FunctionMetrics>(userFuncPar);
                     state.functionMetrics[userFuncPar] = std::move(newMetrics);
                 }
+                state.functionMetrics[userFuncPar]->addInFlightReq(msgId);
                 state.chainedInflights[chainedid]++;
             }
 
@@ -927,24 +928,6 @@ void Planner::dispatchSchedulingDecision(
 
     SPDLOG_DEBUG("Finished dispatching {} messages for execution",
                  req->messages_size());
-}
-
-bool Planner::registerFunctionState(const std::string& function,
-                                    const std::string& host,
-                                    const std::string& partitionBy)
-{
-    SPDLOG_TRACE(
-      "Planner received request to register function state {} from host {}",
-      function,
-      host);
-    if (!partitionBy.empty()) {
-        SPDLOG_TRACE("Partitioned function state, partitioned by {}",
-                     partitionBy);
-    }
-    faabric::util::FullLock lock(plannerMx);
-    auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
-    bool result = batchScheduler->registerState(function, host, partitionBy);
-    return result;
 }
 
 Planner& getPlanner()
