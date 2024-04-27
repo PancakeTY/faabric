@@ -145,6 +145,7 @@ message Message {
 
     // State
     // Hint the Parallelism Id of this task
+    int32 chainedId = 98;
     int32 parallelismId = 99;
 }
 

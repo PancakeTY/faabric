@@ -105,6 +105,8 @@ class Planner
     PlannerState state;
     PlannerConfig config;
 
+    unsigned int chainedIdCounter = 0;
+
     // Snapshot registry to distribute snapshots in THREADS requests
     faabric::snapshot::SnapshotRegistry& snapshotRegistry;
 

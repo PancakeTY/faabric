@@ -329,8 +329,6 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg)
             decision->removeMessage(msg->id());
 
             // Record the Metrics
-            // We use the msg function here since the req function is the first
-            // function of chain call
             std::string userFunc = msg->user() + "_" + msg->function();
             int parallelismId = msg->parallelismid();
             std::string userFuncPar =
@@ -342,6 +340,21 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg)
                 state.functionMetrics[userFuncPar]->print();
             }
 
+            // Record the Chain metrics
+            int chainedId = msg->chainedid();
+            state.chainedInflights[chainedId]--;
+            if (state.chainedInflights[chainedId] == 0) {
+                // req is the first message in the chain
+                userFunc = req->user() + "_" + req->function();
+                if (state.chainFunctionMetrics.find(userFunc) !=
+                    state.chainFunctionMetrics.end()) {
+                    state.chainFunctionMetrics[userFunc]->removeInFlightReqs(
+                      chainedId);
+                    state.chainFunctionMetrics[userFunc]->print();
+                }
+                state.chainedInflights.erase(chainedId);
+            }
+
             // Remove pair altogether if no more messages left
             if (req->messages_size() == 0) {
                 SPDLOG_INFO("Planner removing app {} from in-flight", appId);
@@ -351,15 +364,6 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg)
                 assert(decision->appIdxs.empty());
                 assert(decision->groupIdxs.empty());
                 state.inFlightReqs.erase(appId);
-
-                // Record the Chain metrics
-                userFunc = req->user() + "_" + req->function();
-                if (state.chainFunctionMetrics.find(userFunc) !=
-                    state.chainFunctionMetrics.end()) {
-                    state.chainFunctionMetrics[userFunc]->removeInFlightReqs(
-                      appId);
-                    state.chainFunctionMetrics[userFunc]->print();
-                }
 
                 // If we are removing the app from in-flight, we can also
                 // remmove any pre-loaded scheduling decisions
@@ -575,6 +579,26 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
     auto decisionType =
       batchScheduler->getDecisionType(state.inFlightReqs, req);
 
+    // For the NEW messages, we assgin a chainedId for it if it is not set.
+    // The chainId is used to trace the chain function.
+    bool isNew = decisionType == faabric::batch_scheduler::DecisionType::NEW;
+    if (isNew) {
+        // Assign chainedId for the new messages
+        for (int i = 0; i < req->messages_size(); i++) {
+            // Assign chainedId for the new messages
+            faabric::Message* tempMessage = req->mutable_messages(i);
+            // If the chainedId is not set, we assign a new chainedId for it.
+            if (tempMessage->chainedid() != 0) {
+                continue;
+            }
+            int chainedId = ++chainedIdCounter;
+            tempMessage->set_chainedid(chainedId);
+            SPDLOG_TRACE("Assign chained id {} for message {}",
+                         chainedId,
+                         tempMessage->id());
+        }
+    }
+
     // Make a copy of the host-map state to make sure the scheduling process
     // does not modify it
     auto hostMapCopy = convertToBatchSchedHostMap(state.hostMap);
@@ -648,31 +672,32 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
             state.inFlightReqs[appId] = std::make_pair(req, decision);
 
             // 2.5 For a new decision, we record its metrics
-            // If there are multiple input in the same NEW request, the metrics
-            // for this chain function is from the start until the last input is
-            // finished. Is should recoerd chain-id in the future.
-            // Set the userFunc for the metrics record
-            std::string userFunc = req->user() + "_" + req->function();
-            if (state.chainFunctionMetrics.find(userFunc) ==
-                state.chainFunctionMetrics.end()) {
-                // The chain function name does not exist in the map, so we need
-                // to create a new Metrics object
-                std::shared_ptr<FunctionMetrics> newMetrics =
-                  std::make_shared<FunctionMetrics>(userFunc);
-
-                // Finally, add the newMetrics object to the map
-                state.chainFunctionMetrics[userFunc] = std::move(newMetrics);
-            }
-            state.chainFunctionMetrics[userFunc]->addInFlightReq(appId);
-
-            // 2.6 Record the metrics for each function.
+            // Metrics include chained metrics and function metrics (BOTH
+            // message level)
             for (size_t i = 0; i < req->messages_size(); i++) {
                 faabric::Message tempMessage = req->messages(i);
-                userFunc = tempMessage.user() + "_" + tempMessage.function();
                 int tempParallelisimId = tempMessage.parallelismid();
                 int msgId = tempMessage.id();
+                int chainedId = tempMessage.chainedid();
+                std::string userFunc =
+                  tempMessage.user() + "_" + tempMessage.function();
                 std::string userFuncPar =
                   userFunc + "_" + std::to_string(tempParallelisimId);
+
+                if (state.chainFunctionMetrics.find(userFunc) ==
+                    state.chainFunctionMetrics.end()) {
+                    // The chain function name does not exist in the map, so we
+                    // need to create a new Metrics object
+                    std::shared_ptr<FunctionMetrics> newMetrics =
+                      std::make_shared<FunctionMetrics>(userFunc);
+
+                    // Finally, add the newMetrics object to the map
+                    state.chainFunctionMetrics[userFunc] =
+                      std::move(newMetrics);
+                }
+                // For the NEW messages, reset the in-flight requests
+                state.chainedInflights[chainedId] = 1;
+                state.chainFunctionMetrics[userFunc]->addInFlightReq(chainedId);
 
                 if (state.functionMetrics.find(userFuncPar) ==
                     state.functionMetrics.end()) {
@@ -721,6 +746,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
                   tempMessage.user() + "_" + tempMessage.function();
                 int tempParallelisimId = tempMessage.parallelismid();
                 int msgId = tempMessage.id();
+                int chainedid = tempMessage.chainedid();
                 std::string userFuncPar =
                   userFunc + "_" + std::to_string(tempParallelisimId);
 
@@ -732,7 +758,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
                       std::make_shared<FunctionMetrics>(userFuncPar);
                     state.functionMetrics[userFuncPar] = std::move(newMetrics);
                 }
-                state.functionMetrics[userFuncPar]->addInFlightReq(msgId);
+                state.chainedInflights[chainedid]++;
             }
 
             // 3. We want to send the mappings for the _updated_ decision,

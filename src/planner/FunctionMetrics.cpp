@@ -71,7 +71,8 @@ void FunctionMetrics::removeInFlightReqs(int id)
     std::lock_guard<std::mutex> guard(mtx); // Ensure thread safety
     auto it = invokeTimeMap.find(id);
     if (it == invokeTimeMap.end()) {
-        SPDLOG_WARN("Could not find start time for request {}", id);
+        SPDLOG_WARN(
+          "{} Could not find start time for request {}", function, id);
         return;
     }
 
