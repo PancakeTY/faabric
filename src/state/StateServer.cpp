@@ -450,15 +450,15 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionLatency(
   // Prepare the response
   auto response = std::make_unique<faabric::FunctionStateMetricResponse>();
   response->set_host(state.getThisIP());
-  for (auto& [function, functionMetric] : metrics) {
-      auto functionMetricProto = response->add_metrics();
-      functionMetricProto->set_userfuncpar(function);
-      functionMetricProto->set_lockblocktime(functionMetric["lockBlockTime"]);
-      functionMetricProto->set_lockholdtime(functionMetric["lockHoldTime"]);
+  for (auto& [function, functionLatency] : metrics) {
+      auto functionLatencyProto = response->add_metrics();
+      functionLatencyProto->set_userfuncpar(function);
+      functionLatencyProto->set_lockblocktime(functionLatency["lockBlockTime"]);
+      functionLatencyProto->set_lockholdtime(functionLatency["lockHoldTime"]);
       SPDLOG_TRACE("Function metrics: {} - lockBlockTime: {}, lockHoldTime: {}",
                    function,
-                   functionMetric["lockBlockTime"],
-                   functionMetric["lockHoldTime"]);
+                   functionLatency["lockBlockTime"],
+                   functionLatency["lockHoldTime"]);
   }
   return response;
 }
