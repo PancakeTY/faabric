@@ -52,14 +52,4 @@ DecisionType BatchScheduler::getDecisionType(
 
     return DecisionType::SCALE_CHANGE;
 }
-
-// RegisterState is used by state-aware scheduler to allocate function according
-// to the state position. Other shceduler will not use this function.
-bool BatchScheduler::registerState(const std::string& function,
-                                   const std::string& host,
-                                   const std::string& partitionBy)
-{
-    SPDLOG_WARN("BatchScheduler::registerState not implemented");
-    return true;
-}
 }

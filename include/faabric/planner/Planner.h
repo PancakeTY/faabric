@@ -93,9 +93,12 @@ class Planner
     // Function State public API
     // ----------
 
-    bool registerFunctionState(const std::string& function,
-                               const std::string& host,
-                               const std::string& partitionBy = "");
+    // ----------
+    // Metrics public API
+    // ----------
+    // Get all Mertrics: Locking congestion time, processing time, etc.
+    // MAP<Function, MAP<metric, value>>
+    std::map<std::string, std::map<std::string, int>> getMetrics();
 
   private:
     // There's a singleton instance of the planner running, but it must allow

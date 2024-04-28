@@ -15,10 +15,10 @@
  * user, not chain_function_call)
  */
 namespace faabric::planner {
-class FunctionMetrics
+class FunctionLatency
 {
   public:
-    FunctionMetrics(std::string functionIn);
+    FunctionLatency(std::string functionIn);
 
     // ----------
     // Util public API

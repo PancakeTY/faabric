@@ -414,17 +414,7 @@ void PlannerClient::preloadSchedulingDecision(
 // Function State calls
 // ------
 
-void PlannerClient::registerFunctionState(
-  std::shared_ptr<faabric::FunctionStateRegister> req)
-{
-    RegisterFunctionStateResponse resp;
-    syncSend(PlannerCalls::RegisterFunctionState, req.get(), &resp);
 
-    if (resp.status().status() != ResponseStatus_Status_OK) {
-        throw std::runtime_error(
-          "Error registering function state with planner!");
-    }
-}
 
 // -----------------------------------
 // Static setter/getters

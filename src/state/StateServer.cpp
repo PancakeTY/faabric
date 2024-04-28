@@ -85,8 +85,8 @@ std::unique_ptr<google::protobuf::Message> StateServer::doSyncRecv(
         case faabric::state::StateCalls::FunctionCreate: {
             return recvFunctionCreate(message.udata());
         }
-        case faabric::state::StateCalls::FunctionMetrics: {
-            return recvFunctionMetrics(message.udata());
+        case faabric::state::StateCalls::FunctionLatency: {
+            return recvFunctionLatency(message.udata());
         }
         default: {
             throw std::runtime_error(
@@ -441,7 +441,7 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionCreate(
     return response;
 }
 
-std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionMetrics(
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionLatency(
   std::span<const uint8_t> buffer)
 {
   PARSE_MSG(faabric::EmptyRequest, buffer.data(), buffer.size());

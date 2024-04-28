@@ -1,4 +1,4 @@
-#include <faabric/planner/FunctionMetrics.h>
+#include <faabric/planner/FunctionLatency.h>
 #include <faabric/util/clock.h>
 #include <faabric/util/logging.h>
 #include <iostream>
@@ -8,7 +8,7 @@ namespace faabric::planner {
 
 std::mutex mtx;
 
-FunctionMetrics::FunctionMetrics(std::string functionIn)
+FunctionLatency::FunctionLatency(std::string functionIn)
   : function(std::move(functionIn))
   , completedRequests(0)
   , averageLatency(0)
@@ -19,7 +19,7 @@ FunctionMetrics::FunctionMetrics(std::string functionIn)
     std::fill(minuteCounts.begin(), minuteCounts.end(), 0);
 }
 
-void FunctionMetrics::reset()
+void FunctionLatency::reset()
 {
     std::lock_guard<std::mutex> guard(mtx);
     completedRequests = 0;
@@ -29,7 +29,7 @@ void FunctionMetrics::reset()
     invokeTimeMap.clear();
 }
 
-void FunctionMetrics::print()
+void FunctionLatency::print()
 {
     std::lock_guard<std::mutex> guard(mtx);
     auto nowMillis = faabric::util::getGlobalClock().epochMillis();
@@ -44,7 +44,7 @@ void FunctionMetrics::print()
               << std::endl;
 }
 
-std::string FunctionMetrics::getResult()
+std::string FunctionLatency::getResult()
 {
     std::lock_guard<std::mutex> guard(mtx);
     auto nowMillis = faabric::util::getGlobalClock().epochMillis();
@@ -59,14 +59,14 @@ std::string FunctionMetrics::getResult()
            std::to_string(throughputLastTenMins);
 }
 
-void FunctionMetrics::addInFlightReq(int id)
+void FunctionLatency::addInFlightReq(int id)
 {
     std::lock_guard<std::mutex> guard(mtx);
     long startTime = faabric::util::getGlobalClock().epochMillis();
     invokeTimeMap[id] = startTime;
 }
 
-void FunctionMetrics::removeInFlightReqs(int id)
+void FunctionLatency::removeInFlightReqs(int id)
 {
     std::lock_guard<std::mutex> guard(mtx); // Ensure thread safety
     auto it = invokeTimeMap.find(id);
@@ -96,7 +96,7 @@ void FunctionMetrics::removeInFlightReqs(int id)
     minuteCounts[currentMinute % minuteCounts.size()]++;
 }
 
-void FunctionMetrics::updateThroughput(size_t currentMinute)
+void FunctionLatency::updateThroughput(size_t currentMinute)
 {
     size_t minutesElapsed = currentMinute - lastUpdateMinute;
 

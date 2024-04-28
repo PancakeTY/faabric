@@ -185,7 +185,7 @@ FunctionStateClient::getMetrics()
 
     faabric::EmptyRequest request;
     faabric::FunctionStateMetricResponse response;
-    syncSend(faabric::state::StateCalls::FunctionMetrics, &request, &response);
+    syncSend(faabric::state::StateCalls::FunctionLatency, &request, &response);
 
     // Transform the result to the expected format
     size_t metricsSize = response.metrics_size();

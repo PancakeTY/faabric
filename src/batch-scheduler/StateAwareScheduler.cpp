@@ -433,7 +433,7 @@ std::shared_ptr<SchedulingDecision> StateAwareScheduler::makeSchedulingDecision(
         // if the Scheduling failed this time, the next scheduling will
         // overwrite it.
         req->mutable_messages(msgIdx)->set_parallelismid(parallelismId);
-
+    
         std::string hostKey = userFunc + "_" + std::to_string(parallelismId);
         // If no key is found, ignore it.
         if (stateHost.find(hostKey) == stateHost.end()) {
@@ -520,38 +520,38 @@ std::shared_ptr<SchedulingDecision> StateAwareScheduler::makeSchedulingDecision(
     return decision;
 }
 
-bool StateAwareScheduler::registerState(const std::string& userFunction,
-                                        const std::string& host,
-                                        const std::string& partitionBy)
-{
-    // The default parallelism is 1
-    functionParallelism[userFunction] = 1;
-    functionCounter[userFunction] = 0;
-    // The default parallelism Id is 0
-    std::string funcWithParallelism = userFunction + "_0";
-    stateHost[funcWithParallelism] = host;
-    if (!partitionBy.empty()) {
-        statePartitionBy[userFunction] = partitionBy;
-    }
-    // Logging functionParallelism
-    SPDLOG_TRACE("Function state register has changed, the new state is:");
-    for (const auto& pair : functionParallelism) {
-        SPDLOG_TRACE("Function: {}, Parallelism: {}", pair.first, pair.second);
-    }
+// bool StateAwareScheduler::registerState(const std::string& userFunction,
+//                                         const std::string& host,
+//                                         const std::string& partitionBy)
+// {
+//     // The default parallelism is 1
+//     functionParallelism[userFunction] = 1;
+//     functionCounter[userFunction] = 0;
+//     // The default parallelism Id is 0
+//     std::string funcWithParallelism = userFunction + "_0";
+//     stateHost[funcWithParallelism] = host;
+//     if (!partitionBy.empty()) {
+//         statePartitionBy[userFunction] = partitionBy;
+//     }
+//     // Logging functionParallelism
+//     SPDLOG_TRACE("Function state register has changed, the new state is:");
+//     for (const auto& pair : functionParallelism) {
+//         SPDLOG_TRACE("Function: {}, Parallelism: {}", pair.first, pair.second);
+//     }
 
-    // Logging stateHost
-    for (const auto& pair : stateHost) {
-        SPDLOG_TRACE("Function: {}, Host: {}", pair.first, pair.second);
-    }
+//     // Logging stateHost
+//     for (const auto& pair : stateHost) {
+//         SPDLOG_TRACE("Function: {}, Host: {}", pair.first, pair.second);
+//     }
 
-    // Logging statePartitionBy
-    for (const auto& pair : statePartitionBy) {
-        SPDLOG_TRACE(
-          "Function: {}, Partitioned By: {}", pair.first, pair.second);
-    }
+//     // Logging statePartitionBy
+//     for (const auto& pair : statePartitionBy) {
+//         SPDLOG_TRACE(
+//           "Function: {}, Partitioned By: {}", pair.first, pair.second);
+//     }
 
-    return true;
-}
+//     return true;
+// }
 
 // TODO - for partitioned state. repartiton the key.
 // TODO - change it to increase or decrease function parallelism. It should
@@ -676,16 +676,6 @@ void StateAwareScheduler::flushStateInfo()
     functionCounter.clear();
     stateHost.clear();
     statePartitionBy.clear();
-}
-
-std::map<std::string, std::map<std::string, int>>
-StateAwareScheduler::getAllMetrics(HostMap& hostMap)
-{
-    std::map<std::string, std::map<std::string, int>> metricsMap;
-    // Get the average process time of each function (function and functionPar).
-
-    // Get the congetsion, hold time of each function state.
-    return metricsMap;
 }
 
 } // namespace faabric::batch_scheduler

@@ -70,7 +70,7 @@ class StateServer final : public faabric::transport::MessageEndpointServer
     std::unique_ptr<google::protobuf::Message> recvFunctionCreate(
       std::span<const uint8_t> buffer);
 
-    std::unique_ptr<google::protobuf::Message> recvFunctionMetrics(
+    std::unique_ptr<google::protobuf::Message> recvFunctionLatency(
       std::span<const uint8_t> buffer);
 };
 }

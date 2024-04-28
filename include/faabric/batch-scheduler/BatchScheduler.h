@@ -73,10 +73,6 @@ class BatchScheduler
       HostMap& hostMap,
       const InFlightReqs& inFlightReqs,
       std::shared_ptr<faabric::BatchExecuteRequest> req) = 0;
-    
-    virtual bool registerState(const std::string& function,
-                       const std::string& host,
-                       const std::string& partitionBy = "");
 
   protected:
     // ----------

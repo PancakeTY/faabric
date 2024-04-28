@@ -18,6 +18,5 @@ enum PlannerCalls
     GetNumMigrations = 12,
     CallBatch = 13,
     PreloadSchedulingDecision = 14,
-    RegisterFunctionState = 15,
 };
 }

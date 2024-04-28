@@ -37,9 +37,6 @@ class StateAwareScheduler final : public BatchScheduler
 
     void flushStateInfo();
 
-    std::map<std::string, std::map<std::string, int>> getAllMetrics(
-      HostMap& hostMap);
-
   private:
     bool isFirstDecisionBetter(
       std::shared_ptr<SchedulingDecision> decisionA,
@@ -84,9 +81,9 @@ class StateAwareScheduler final : public BatchScheduler
      * Function: demo_function1, Partitioned By: k1
      * Function: demo_function2, Partitioned By: k2
     ***/
-    bool registerState(const std::string& userFunction,
-                       const std::string& host,
-                       const std::string& partitionBy = "") override;
+    // bool registerState(const std::string& userFunction,
+    //                    const std::string& host,
+    //                    const std::string& partitionBy = "");
     // return the parallelism index of this function, which is align with state.
     int getParallelismIndex(const std::string& userFunction,
                             const faabric::Message& msg);

@@ -29,7 +29,7 @@ enum StateCalls
     FunctionLock = 14,
     FunctionUnlock = 15,
     FunctionCreate = 16,
-    FunctionMetrics = 17,
+    FunctionLatency = 17,
 };
 
 class State

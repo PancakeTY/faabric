@@ -102,7 +102,6 @@ class PlannerClient final : public faabric::transport::MessageEndpointClient
     // Function State calls
     // ------
 
-    void registerFunctionState(std::shared_ptr<faabric::FunctionStateRegister> req);
 
   private:
     std::mutex plannerCacheMx;

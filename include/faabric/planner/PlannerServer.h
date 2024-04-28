@@ -49,9 +49,6 @@ class PlannerServer final : public faabric::transport::MessageEndpointServer
     std::unique_ptr<google::protobuf::Message> recvCallBatch(
       std::span<const uint8_t> buffer);
 
-    std::unique_ptr<google::protobuf::Message> recvFunctionStateRegister(
-      std::span<const uint8_t> buffer);
-
   private:
     faabric::planner::Planner& planner;
 };
