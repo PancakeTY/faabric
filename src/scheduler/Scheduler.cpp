@@ -331,7 +331,10 @@ void Scheduler::executeBatchLazy(
     // A request might contains the same function with different parallelism.
     for (size_t i = 0; i < nMessages; i++) {
         std::shared_ptr<faabric::Message> tempMsg =
-          std::make_shared<faabric::Message>(req->messages(i));
+          std::make_shared<faabric::Message>(*req->mutable_messages(i));
+        // Set the queue start time here.
+        tempMsg->set_queuestarttime(
+          faabric::util::getGlobalClock().epochMillis());
         std::string userFuncPar = tempMsg->user() + "_" + tempMsg->function() +
                                   "_" +
                                   std::to_string(tempMsg->parallelismid());
@@ -357,6 +360,8 @@ void Scheduler::executeBatchLazy(
             while (!waitingBatch.batchQueue.empty()) {
                 auto* message = newReq->add_messages();
                 *message = std::move(*waitingBatch.batchQueue.front());
+                message->set_queueendtime(
+                  faabric::util::getGlobalClock().epochMillis());
                 waitingBatch.batchQueue.pop();
             }
             // Claim new Executor, we can bound the first msg here, since claim

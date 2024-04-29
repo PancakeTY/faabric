@@ -14,6 +14,8 @@ class FunctionStateClient : public faabric::transport::MessageEndpointClient
                                  const std::string& funcIn,
                                  const int parallelismIdIn,
                                  const std::string& hostIn);
+    
+    FunctionStateClient(const std::string& hostIn);
 
     const std::string user;
     const std::string func;

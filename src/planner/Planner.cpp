@@ -4,6 +4,7 @@
 #include <faabric/proto/faabric.pb.h>
 #include <faabric/scheduler/FunctionCallClient.h>
 #include <faabric/snapshot/SnapshotClient.h>
+#include <faabric/state/FunctionStateClient.h>
 #include <faabric/transport/PointToPointBroker.h>
 #include <faabric/util/batch.h>
 #include <faabric/util/clock.h>
@@ -335,7 +336,10 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg)
               userFunc + "_" + std::to_string(parallelismId);
             if (state.funcLatencyStats.find(userFuncPar) !=
                 state.funcLatencyStats.end()) {
-                state.funcLatencyStats[userFuncPar]->removeInFlightReqs(msgId);
+                // Record the Lock metrics here
+                int waitingTime = msg->queueendtime() - msg->queuestarttime();
+                state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
+                  msgId, waitingTime);
                 // Print the metrics Only for debug now.
                 state.funcLatencyStats[userFuncPar]->print();
             }
@@ -624,6 +628,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
     if (!isDistChange && state.preloadedSchedulingDecisions.contains(appId)) {
         decision = getPreloadedSchedulingDecision(appId, req);
     } else {
+        getMetrics();
         decision = batchScheduler->makeSchedulingDecision(
           hostMapCopy, state.inFlightReqs, req);
     }
@@ -697,7 +702,8 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
                 }
                 // For the NEW messages, reset the in-flight requests
                 state.chainedInflights[chainedId] = 1;
-                state.chainFuncLatencyStats[userFunc]->addInFlightReq(chainedId);
+                state.chainFuncLatencyStats[userFunc]->addInFlightReq(
+                  chainedId);
 
                 if (state.funcLatencyStats.find(userFuncPar) ==
                     state.funcLatencyStats.end()) {
@@ -930,9 +936,55 @@ void Planner::dispatchSchedulingDecision(
                  req->messages_size());
 }
 
-std::map<std::string, std::map<std::string, int>>  Planner::getMetrics(){
-    std::map<std::string, std::map<std::string, int>> metrics;
-    return metrics;
+std::map<std::string, FunctionMetrics> Planner::getMetrics()
+{
+    std::map<std::string, FunctionMetrics> metricsStats;
+    // Retrive the Latency Metrics from planner state
+    // Metrics of chained functions
+    for (auto [ithFunction, ithLatency] : state.chainFuncLatencyStats) {
+        FunctionMetrics ithMetrics = FunctionMetrics(ithFunction);
+        ithMetrics.isChained = true;
+        ithMetrics.throughput = ithLatency->completedRequests;
+        ithMetrics.processLatency = ithLatency->averageLatency;
+        metricsStats.emplace(ithFunction, ithMetrics);
+    }
+    // Metrics of single function
+    for (auto [ithFunction, ithLatency] : state.funcLatencyStats) {
+        FunctionMetrics ithMetrics = FunctionMetrics(ithFunction);
+        ithMetrics.throughput = ithLatency->completedRequests;
+        ithMetrics.processLatency = ithLatency->averageLatency;
+        ithMetrics.averageWaitingTime = ithLatency->averageWaitingTime;
+        metricsStats.emplace(ithFunction, ithMetrics);
+    }
+    // Retrive Metrics from State Server.
+    for (auto [ithHostName, ithHostObject] : state.hostMap) {
+        std::map<std::string, std::map<std::string, int>> tempMetrics;
+        state::FunctionStateClient cli(ithHostName);
+        tempMetrics = cli.getMetrics();
+        for (auto [ithUserFuncPar, ithStateMetrics] : tempMetrics) {
+            if (!metricsStats.contains(ithUserFuncPar)) {
+                SPDLOG_WARN("Metrics for {} not found in planner",
+                            ithUserFuncPar);
+                throw std::runtime_error("Metrics not found in planner");
+            }
+            auto ithMetrics = metricsStats.at(ithUserFuncPar);
+            ithMetrics.lockCongestionTime = ithStateMetrics[LOCK_BLOCK_TIME];
+            ithMetrics.lockHoldTime = ithStateMetrics[LOCK_HOLD_TIME];
+        }
+    }
+    // Print the metrics.
+    for (auto [ithFunc, ithMetrics] : metricsStats) {
+        SPDLOG_DEBUG("Metrics for {}: throughput: {}, processLatency: {}, "
+                     "averageWaitingTime: {}, lockCongestionTime: {}, "
+                     "lockHoldTime: {}",
+                     ithFunc,
+                     ithMetrics.throughput,
+                     ithMetrics.processLatency,
+                     ithMetrics.averageWaitingTime,
+                     ithMetrics.lockCongestionTime,
+                     ithMetrics.lockHoldTime);
+    }
+    return metricsStats;
 }
 
 Planner& getPlanner()

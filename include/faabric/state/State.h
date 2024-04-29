@@ -6,6 +6,9 @@
 #include <shared_mutex>
 #include <string>
 
+#define LOCK_BLOCK_TIME "lockBlockTime"
+#define LOCK_HOLD_TIME "lockHoldTime"
+
 namespace faabric::state {
 
 // State client-server API
@@ -29,7 +32,7 @@ enum StateCalls
     FunctionLock = 14,
     FunctionUnlock = 15,
     FunctionCreate = 16,
-    FunctionLatency = 17,
+    FunctionRuntimeMetrics = 17,
 };
 
 class State

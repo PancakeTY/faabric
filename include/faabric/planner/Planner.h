@@ -1,6 +1,7 @@
 #pragma once
 
 #include <faabric/batch-scheduler/SchedulingDecision.h>
+#include <faabric/planner/FunctionMetrics.h>
 #include <faabric/planner/PlannerState.h>
 #include <faabric/planner/planner.pb.h>
 #include <faabric/proto/faabric.pb.h>
@@ -98,7 +99,7 @@ class Planner
     // ----------
     // Get all Mertrics: Locking congestion time, processing time, etc.
     // MAP<Function, MAP<metric, value>>
-    std::map<std::string, std::map<std::string, int>> getMetrics();
+    std::map<std::string, FunctionMetrics> getMetrics();
 
   private:
     // There's a singleton instance of the planner running, but it must allow

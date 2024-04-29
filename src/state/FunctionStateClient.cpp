@@ -18,6 +18,10 @@ FunctionStateClient::FunctionStateClient(const std::string& userIn,
   , parallelismId(parallelismIdIn)
 {}
 
+FunctionStateClient::FunctionStateClient(const std::string& hostIn)
+  : FunctionStateClient("unknown", "unknown", 0, hostIn)
+{}
+
 void FunctionStateClient::logRequest(const std::string& op)
 {
     SPDLOG_TRACE(
@@ -185,16 +189,17 @@ FunctionStateClient::getMetrics()
 
     faabric::EmptyRequest request;
     faabric::FunctionStateMetricResponse response;
-    syncSend(faabric::state::StateCalls::FunctionLatency, &request, &response);
+    syncSend(
+      faabric::state::StateCalls::FunctionRuntimeMetrics, &request, &response);
 
     // Transform the result to the expected format
     size_t metricsSize = response.metrics_size();
     std::map<std::string, std::map<std::string, int>> metricsResult;
     for (size_t i = 0; i < metricsSize; i++) {
         std::string userFuncPar = response.metrics(i).userfuncpar();
-        metricsResult[userFuncPar]["lockBlockTime"] =
+        metricsResult[userFuncPar][LOCK_BLOCK_TIME] =
           response.metrics(i).lockblocktime();
-        metricsResult[userFuncPar]["lockHoldTime"] =
+        metricsResult[userFuncPar][LOCK_HOLD_TIME] =
           response.metrics(i).lockholdtime();
     }
     return metricsResult;

@@ -39,10 +39,11 @@ class FunctionLatency
 
     // It is called when a source function is finished.
     void removeInFlightReqs(int id);
+    // For the functions, we also record the time waiting in batch queue
+    void removeInFlightReqs(int id, int batchWaitingTimeIn);
 
     void updateThroughput(size_t currentMinute);
 
-  private:
     // Function name
     std::string function;
     // Number of completed requests from the beginning
@@ -50,9 +51,12 @@ class FunctionLatency
     size_t averageLatency;
     size_t throughputLastMin;
     size_t throughputLastTenMins;
+    size_t waitingQueueCount = 0;
+    size_t averageWaitingTime = 0;
     // The map of the function ID to its invoke time
     std::map<int, long> invokeTimeMap;
 
+  private:
     // Variables used for getting the throughput
     // We record the last 10 minues, window size should be 11.
     // now it 15 mins, the LastTen means from 5 to 14, the LastOne means 14

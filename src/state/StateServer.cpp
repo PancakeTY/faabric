@@ -85,8 +85,8 @@ std::unique_ptr<google::protobuf::Message> StateServer::doSyncRecv(
         case faabric::state::StateCalls::FunctionCreate: {
             return recvFunctionCreate(message.udata());
         }
-        case faabric::state::StateCalls::FunctionLatency: {
-            return recvFunctionLatency(message.udata());
+        case faabric::state::StateCalls::FunctionRuntimeMetrics: {
+            return recvFunctionRuntimeMetrics(message.udata());
         }
         default: {
             throw std::runtime_error(
@@ -441,7 +441,7 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionCreate(
     return response;
 }
 
-std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionLatency(
+std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionRuntimeMetrics(
   std::span<const uint8_t> buffer)
 {
   PARSE_MSG(faabric::EmptyRequest, buffer.data(), buffer.size());
@@ -450,15 +450,15 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionLatency(
   // Prepare the response
   auto response = std::make_unique<faabric::FunctionStateMetricResponse>();
   response->set_host(state.getThisIP());
-  for (auto& [function, functionLatency] : metrics) {
-      auto functionLatencyProto = response->add_metrics();
-      functionLatencyProto->set_userfuncpar(function);
-      functionLatencyProto->set_lockblocktime(functionLatency["lockBlockTime"]);
-      functionLatencyProto->set_lockholdtime(functionLatency["lockHoldTime"]);
+  for (auto& [function, functionRuntime] : metrics) {
+      auto functionRuntimeProto = response->add_metrics();
+      functionRuntimeProto->set_userfuncpar(function);
+      functionRuntimeProto->set_lockblocktime(functionRuntime["lockBlockTime"]);
+      functionRuntimeProto->set_lockholdtime(functionRuntime["lockHoldTime"]);
       SPDLOG_TRACE("Function metrics: {} - lockBlockTime: {}, lockHoldTime: {}",
                    function,
-                   functionLatency["lockBlockTime"],
-                   functionLatency["lockHoldTime"]);
+                   functionRuntime["lockBlockTime"],
+                   functionRuntime["lockHoldTime"]);
   }
   return response;
 }

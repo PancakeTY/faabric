@@ -6,7 +6,7 @@
 
 namespace faabric::planner {
 
-std::mutex mtx;
+std::mutex funcLatenctyMtx;
 
 FunctionLatency::FunctionLatency(std::string functionIn)
   : function(std::move(functionIn))
@@ -21,7 +21,7 @@ FunctionLatency::FunctionLatency(std::string functionIn)
 
 void FunctionLatency::reset()
 {
-    std::lock_guard<std::mutex> guard(mtx);
+    std::lock_guard<std::mutex> guard(funcLatenctyMtx);
     completedRequests = 0;
     averageLatency = 0;
     throughputLastMin = 0;
@@ -31,7 +31,7 @@ void FunctionLatency::reset()
 
 void FunctionLatency::print()
 {
-    std::lock_guard<std::mutex> guard(mtx);
+    std::lock_guard<std::mutex> guard(funcLatenctyMtx);
     auto nowMillis = faabric::util::getGlobalClock().epochMillis();
     // We coarse the time to the minute to save memory.
     size_t currentMinute = nowMillis / 60000; // 60,000 milliseconds in a minute
@@ -41,12 +41,14 @@ void FunctionLatency::print()
               << "Average Latency (ms): " << averageLatency << "\n"
               << "Throughput (Last Minute): " << throughputLastMin << "\n"
               << "Throughput (Last 10 Minutes): " << throughputLastTenMins
+              << "\n"
+              << "Average Waiting Time (ms): " << averageWaitingTime
               << std::endl;
 }
 
 std::string FunctionLatency::getResult()
 {
-    std::lock_guard<std::mutex> guard(mtx);
+    std::lock_guard<std::mutex> guard(funcLatenctyMtx);
     auto nowMillis = faabric::util::getGlobalClock().epochMillis();
     // We coarse the time to the minute to save memory.
     size_t currentMinute = nowMillis / 60000; // 60,000 milliseconds in a minute
@@ -61,14 +63,14 @@ std::string FunctionLatency::getResult()
 
 void FunctionLatency::addInFlightReq(int id)
 {
-    std::lock_guard<std::mutex> guard(mtx);
+    std::lock_guard<std::mutex> guard(funcLatenctyMtx);
     long startTime = faabric::util::getGlobalClock().epochMillis();
     invokeTimeMap[id] = startTime;
 }
 
 void FunctionLatency::removeInFlightReqs(int id)
 {
-    std::lock_guard<std::mutex> guard(mtx); // Ensure thread safety
+    std::lock_guard<std::mutex> guard(funcLatenctyMtx); // Ensure thread safety
     auto it = invokeTimeMap.find(id);
     if (it == invokeTimeMap.end()) {
         SPDLOG_WARN(
@@ -94,6 +96,21 @@ void FunctionLatency::removeInFlightReqs(int id)
     size_t currentMinute = nowMillis / 60000; // 60,000 milliseconds in a minute
     updateThroughput(currentMinute);
     minuteCounts[currentMinute % minuteCounts.size()]++;
+}
+
+void FunctionLatency::removeInFlightReqs(int id, int batchWaitingTimeIn)
+{
+    {
+        std::lock_guard<std::mutex> guard(funcLatenctyMtx);
+        double batchWaitingTime = static_cast<double>(batchWaitingTimeIn);
+        averageWaitingTime =
+          (waitingQueueCount > 0)
+            ? (averageWaitingTime + (batchWaitingTime - averageWaitingTime) /
+                                      (waitingQueueCount + 1.0))
+            : batchWaitingTime;
+        waitingQueueCount++;
+    }
+    removeInFlightReqs(id);
 }
 
 void FunctionLatency::updateThroughput(size_t currentMinute)
