@@ -1,5 +1,6 @@
 #include <faabric/state/FunctionState.h>
 #include <faabric/state/FunctionStateClient.h>
+#include <faabric/util/hash.h>
 #include <faabric/util/logging.h>
 #include <faabric/util/macros.h>
 #include <faabric/util/memory.h>
@@ -511,6 +512,8 @@ bool FunctionState::rePartitionState(const std::string& newStateHost)
     // If the parallelismId is changed
     int newParallel = newStateMap.size();
     int newParallelismId = -1;
+    // Create a new HashRing temporarily to find the new master.
+    auto hashRing = faabric::util::ConsistentHashRing(newParallel);
     // need to get the new parallelism Id of this host. (start from 0).
     // need to get the new parallelism Id for all the hosts.
     std::map<int, std::string> parToHost;
@@ -536,8 +539,7 @@ bool FunctionState::rePartitionState(const std::string& newStateHost)
     std::map<std::string, std::vector<uint8_t>> newlocalParState;
     for (auto& [key, value] : parState) {
         std::vector<uint8_t> keyVector(key.begin(), key.end());
-        std::size_t hashValue = hashVector(keyVector);
-        int parIdx = hashValue % newParallel;
+        int parIdx = hashRing.getNode(keyVector);
         // Otherwise, transfer it to the new master.
         dataTransfer[parToHost[parIdx]][key] = value;
     }

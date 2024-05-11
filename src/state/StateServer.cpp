@@ -359,11 +359,10 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionParAdd(
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
     FS_ONLY_FROM_REQUEST(parsedMsg)
-    // fs might be nullptr if the function state is not found.
+    // Scheduler created the Function State at first, so it should not be null
     if (fs == nullptr) {
-        fs = state.getFS(
-          parsedMsg.user(), parsedMsg.func(), parsedMsg.parallelismid());
-        fs->setPartitionKey(parsedMsg.pstatekey());
+        throw std::runtime_error("StateServer receive add request, but state "
+                                 "is not found or not master");
     }
     auto reqData = BYTES_CONST(parsedMsg.data().c_str());
     // Add data in tmp position to avoid locking.

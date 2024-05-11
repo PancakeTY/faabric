@@ -3,6 +3,8 @@
 #include <faabric/batch-scheduler/BatchScheduler.h>
 #include <faabric/batch-scheduler/SchedulingDecision.h>
 #include <faabric/util/batch.h>
+#include <faabric/util/hash.h>
+
 #include <map>
 #include <set>
 #include <string>
@@ -28,7 +30,8 @@ class StateAwareScheduler final : public BatchScheduler
 
     // the following functions are public only for tests.
     std::shared_ptr<std::map<std::string, std::string>>
-    increaseFunctionParallelism(const std::string& userFunction,
+    increaseFunctionParallelism(int numIncrease,
+                                const std::string& userFunction,
                                 HostMap& hostMap);
 
     bool repartitionParitionedState(
@@ -51,14 +54,17 @@ class StateAwareScheduler final : public BatchScheduler
     /***
      * The following maps are used to store the state of the functions.
      */
-    // FuctionUser : Parallelism
+    // FunctionUser : Parallelism
     std::map<std::string, int> functionParallelism;
-    // FuctionUser : Counter. It is used for shuffle grouping.
+    // FunctionUser : Counter. It is used for shuffle grouping.
     std::map<std::string, int> functionCounter;
-    // FuctionUser : Host
+    // FunctionUser : Host
     std::map<std::string, std::string> stateHost;
-    // FuctionUser : Input Parition Key
+    // FunctionUser : Input Parition Key
     std::map<std::string, std::string> statePartitionBy;
+    // FunctionUser : hashRing
+    std::map<std::string, std::shared_ptr<util::ConsistentHashRing>>
+      stateHashRing;
 
     // Key is User-function : Value is <parititonInputKey, partitionStateKey>
     std::map<std::string, std::tuple<std::string, std::string>> funcStateRegMap;

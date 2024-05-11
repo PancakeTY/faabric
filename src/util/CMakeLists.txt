@@ -29,4 +29,5 @@ faabric_lib(util
     timing.cpp
     testing.cpp
     serialization.cpp
+    hash.cpp
 )
