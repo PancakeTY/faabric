@@ -51,7 +51,10 @@ void SystemConfig::initialise()
     batchProcess = getEnvVar("BATCH_PROCESS", "on");
     batchSize =  this->getSystemConfIntParam("BATCH_SIZE", "2");
     batchInterval = this->getSystemConfIntParam("BATCH_INTERVAL", "10000");
-    
+    maxParallelism = this->getSystemConfIntParam("MAX_PARALLELISM", "5");
+    parallelismUpdateInterval =
+      this->getSystemConfIntParam("PARALLELISM_UPDATE_INTERVAL", "60000");
+
     // Endpoint
     endpointInterface = getEnvVar("ENDPOINT_INTERFACE", "");
     endpointHost = getEnvVar("ENDPOINT_HOST", "");
@@ -67,7 +70,7 @@ void SystemConfig::initialise()
 
     // Transport
     functionServerThreads =
-      this->getSystemConfIntParam("FUNCTION_SERVER_THREADS", "2");
+      this->getSystemConfIntParam("FUNCTION_SERVER_THREADS", "10");
     stateServerThreads =
       this->getSystemConfIntParam("STATE_SERVER_THREADS", "10");
     snapshotServerThreads =
@@ -126,6 +129,10 @@ void SystemConfig::print()
 
     SPDLOG_INFO("--- STREAM ---");
     SPDLOG_INFO("BATCH_PROCESS              {}", batchProcess);
+    SPDLOG_INFO("BATCH_SIZE                 {}", batchSize);
+    SPDLOG_INFO("BATCH_INTERVAL             {}", batchInterval);
+    SPDLOG_INFO("MAX_PARALLELISM            {}", maxParallelism);
+    SPDLOG_INFO("PARALLELISM_UPDATE_INTERVAL {}", parallelismUpdateInterval);
 
     SPDLOG_INFO("--- Endpoint ---");
     SPDLOG_INFO("ENDPOINT_INTERFACE         {}", endpointInterface);

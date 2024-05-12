@@ -583,8 +583,10 @@ StateAwareScheduler::increaseFunctionParallelism(
         // Update Redis Information and register the state
         std::string partitionBy = std::get<0>(funcStateRegMap[userFunction]);
         std::string stateKey = std::get<1>(funcStateRegMap[userFunction]);
-        registerStateToHost(
-          userFunction + "_" + std::to_string(idx), minHost, partitionBy, stateKey);
+        registerStateToHost(userFunction + "_" + std::to_string(idx),
+                            minHost,
+                            partitionBy,
+                            stateKey);
         // TODO - Create the new function state here!
     }
     if (statePartitionBy.contains(userFunction)) {
@@ -636,6 +638,23 @@ bool StateAwareScheduler::repartitionParitionedState(
     }
     // Wait until get the response from all state server.
     return true;
+}
+
+void StateAwareScheduler::updateParallelism(
+  std::map<std::string, faabric::planner::FunctionMetrics> metrics)
+{
+    // TODO - adjust the parallelism. Currently, only print the metrics.
+    for (auto [ithFunc, ithMetrics] : metrics) {
+        SPDLOG_DEBUG("Metrics for {}: throughput: {}, processLatency: {}, "
+                     "averageWaitingTime: {}, lockCongestionTime: {}, "
+                     "lockHoldTime: {}",
+                     ithFunc,
+                     ithMetrics.throughput,
+                     ithMetrics.processLatency,
+                     ithMetrics.averageWaitingTime,
+                     ithMetrics.lockCongestionTime,
+                     ithMetrics.lockHoldTime);
+    }
 }
 
 void StateAwareScheduler::flushStateInfo()

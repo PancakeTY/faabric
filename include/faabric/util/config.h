@@ -42,6 +42,9 @@ class SystemConfig
     int batchSize;
     // batchInterval unit: ms
     int batchInterval;
+    int maxParallelism;
+    // parallelismUpdateInterval unit: ms
+    int parallelismUpdateInterval;
 
     // Endpoint
     std::string endpointInterface;

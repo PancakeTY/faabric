@@ -1,5 +1,6 @@
 #include <faabric/batch-scheduler/BatchScheduler.h>
 #include <faabric/batch-scheduler/SchedulingDecision.h>
+#include <faabric/batch-scheduler/StateAwareScheduler.h>
 #include <faabric/planner/Planner.h>
 #include <faabric/proto/faabric.pb.h>
 #include <faabric/scheduler/FunctionCallClient.h>
@@ -82,6 +83,11 @@ Planner::Planner()
       std::stoi(faabric::util::getEnvVar("PLANNER_HTTP_SERVER_THREADS", "4")));
 
     printConfig();
+
+    // Register the information for parallelism scaling
+    lastParallelismUpdate = faabric::util::getGlobalClock().epochMillis();
+    parallelismUpdateInterval =
+      faabric::util::getSystemConfig().parallelismUpdateInterval;
 }
 
 PlannerConfig Planner::getConfig()
@@ -628,7 +634,20 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
     if (!isDistChange && state.preloadedSchedulingDecisions.contains(appId)) {
         decision = getPreloadedSchedulingDecision(appId, req);
     } else {
-        getMetrics();
+        // For state-aware scheduler, according to metrics, adjust the
+        // parallelism if necessary.
+        std::shared_ptr<batch_scheduler::StateAwareScheduler>
+          stateAwareScheduler =
+            std::dynamic_pointer_cast<batch_scheduler::StateAwareScheduler>(
+              batchScheduler);
+        if (stateAwareScheduler) {
+            long currentTime = faabric::util::getGlobalClock().epochMillis();
+            if (currentTime - lastParallelismUpdate >
+                parallelismUpdateInterval) {
+                lastParallelismUpdate = currentTime;
+                stateAwareScheduler->updateParallelism(collectMetrics());
+            }
+        }
         decision = batchScheduler->makeSchedulingDecision(
           hostMapCopy, state.inFlightReqs, req);
     }
@@ -936,7 +955,7 @@ void Planner::dispatchSchedulingDecision(
                  req->messages_size());
 }
 
-std::map<std::string, FunctionMetrics> Planner::getMetrics()
+std::map<std::string, FunctionMetrics> Planner::collectMetrics()
 {
     std::map<std::string, FunctionMetrics> metricsStats;
     // Retrive the Latency Metrics from planner state

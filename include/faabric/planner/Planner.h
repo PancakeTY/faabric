@@ -99,7 +99,7 @@ class Planner
     // ----------
     // Get all Mertrics: Locking congestion time, processing time, etc.
     // MAP<Function, MAP<metric, value>>
-    std::map<std::string, FunctionMetrics> getMetrics();
+    std::map<std::string, FunctionMetrics> collectMetrics();
 
   private:
     // There's a singleton instance of the planner running, but it must allow
@@ -108,6 +108,9 @@ class Planner
 
     PlannerState state;
     PlannerConfig config;
+
+    long lastParallelismUpdate;
+    int parallelismUpdateInterval;
 
     unsigned int chainedIdCounter = 0;
 

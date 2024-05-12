@@ -1,8 +1,9 @@
 #pragma once
 
 #include <faabric/batch-scheduler/BatchScheduler.h>
-#include <faabric/batch-scheduler/SchedulingDecision.h>
-#include <faabric/util/batch.h>
+#include <faabric/planner/FunctionMetrics.h>
+#include <faabric/util/config.h>
+#include <faabric/util/clock.h>
 #include <faabric/util/hash.h>
 
 #include <map>
@@ -39,6 +40,9 @@ class StateAwareScheduler final : public BatchScheduler
       std::shared_ptr<std::map<std::string, std::string>> oldStateHost);
 
     void flushStateInfo();
+
+    void updateParallelism(
+      std::map<std::string, faabric::planner::FunctionMetrics> metrics);
 
   private:
     bool isFirstDecisionBetter(
