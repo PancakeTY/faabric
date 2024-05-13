@@ -345,14 +345,6 @@ int StateAwareScheduler::getParallelismIndex(const std::string& userFunction,
     return functionCounter[userFunction]++ % functionParallelism[userFunction];
 }
 
-int getNextMsgId(const std::set<int>& scheduledMessages, int msgIdx)
-{
-    while (scheduledMessages.find(msgIdx) != scheduledMessages.end()) {
-        msgIdx++;
-    }
-    return msgIdx;
-}
-
 bool registerStateToHost(const std::string& userFunctionParIdx,
                          const std::string& host,
                          const std::string& partitionBy,
@@ -374,6 +366,39 @@ bool registerStateToHost(const std::string& userFunctionParIdx,
     return true;
 }
 
+template<typename K, typename V>
+K getNthKey(const std::map<K, V>& map, std::size_t n)
+{
+    if (n >= map.size()) {
+        throw std::out_of_range("Index out of range");
+    }
+
+    auto it = map.begin();
+    std::advance(it, n);
+    return it->first;
+}
+
+void StateAwareScheduler::initializeState(HostMap& hostMap,
+                                          std::string userFunc)
+{
+    // Default parallelism is 1.
+    functionParallelism[userFunc] = 1;
+    functionCounter[userFunc] = 0;
+    // The default parallelism Id is 0
+    std::string funcParaId = userFunc + "_0";
+    int hostIdx = rbCounter++ % hostMap.size();
+    std::string host = getNthKey(hostMap, hostIdx);
+    stateHost[funcParaId] = host;
+    // If the State is partitionedState, register it.
+    std::string partitionBy = std::get<0>(funcStateRegMap[userFunc]);
+    std::string stateKey = std::get<1>(funcStateRegMap[userFunc]);
+    if (partitionBy != "" && stateKey != "") {
+        statePartitionBy[userFunc] = partitionBy;
+    }
+    // Register the state to the host.
+    registerStateToHost(funcParaId, host, partitionBy, stateKey);
+}
+
 // The BinPack's scheduler decision algorithm is very simple. It first sorts
 // hosts (i.e. bins) in a specific order (depending on the scheduling type),
 // and then starts filling bins from begining to end, until it runs out of
@@ -388,122 +413,72 @@ std::shared_ptr<SchedulingDecision> StateAwareScheduler::makeSchedulingDecision(
 
     // Get the sorted list of hosts
     auto decisionType = getDecisionType(inFlightReqs, req);
-    auto sortedHosts = getSortedHosts(hostMap, inFlightReqs, req, decisionType);
-
-    // Assign slots from the list (i.e. bin-pack)
-    auto it = sortedHosts.begin();
     int numLeftToSchedule = req->messages_size();
-    std::set<int> scheduledMessages;
-
-    // We want to make sure the decision order is the same as request order.
-    // Just to match faasm pattern.
-    std::vector<std::string> myDecision(req->messages_size());
-
-    // Before assign slots by using bin-pack. We assign the function-state
-    // functions near its function state.
+    
+    // Round-Robin scheduling
     for (int msgIdx = 0; msgIdx < req->messages_size(); msgIdx++) {
+        bool roundRobinFlag = true;
+        std::string host = "unknown";
+
         std::string userFunc =
           req->messages(msgIdx).user() + "_" + req->messages(msgIdx).function();
-        // If it is not a function-state function, we don't need to consider it.
-        if (!funcStateRegMap.contains(userFunc)) {
-            continue;
-        }
-        // If the function invoke at the first time, register it and create the
-        // state.
-        if (!functionParallelism.contains(userFunc)) {
-            // Default parallelism is 1.
-            functionParallelism[userFunc] = 1;
-            functionCounter[userFunc] = 0;
-            // The default parallelism Id is 0
-            std::string funcParaId = userFunc + "_0";
-            // TODO - Select a proper host.
-            std::string host = sortedHosts[0]->ip;
-            stateHost[funcParaId] = host;
-            // If the State is partitionedState, register it.
-            std::string partitionBy = std::get<0>(funcStateRegMap[userFunc]);
-            std::string stateKey = std::get<1>(funcStateRegMap[userFunc]);
-            if (partitionBy != "" && stateKey != "") {
-                statePartitionBy[userFunc] = partitionBy;
+        // It it is a function-state function, we might need to assign it near
+        // the state.
+        if (funcStateRegMap.contains(userFunc)) {
+            // If function-state has not been initialized, initialize it.
+            if (!functionParallelism.contains(userFunc)) {
+                initializeState(hostMap, userFunc);
             }
-            // Register the state to the host.
-            registerStateToHost(funcParaId, host, partitionBy, stateKey);
-        }
-        // Otherwise, try to assign it to the host that has the function state.
-        int parallelismId =
-          getParallelismIndex(userFunc, req->messages(msgIdx));
-        // Register the parallelismIdx to it. It is safe to register there. Even
-        // if the Scheduling failed this time, the next scheduling will
-        // overwrite it.
-        req->mutable_messages(msgIdx)->set_parallelismid(parallelismId);
+            int parallelismId =
+              getParallelismIndex(userFunc, req->messages(msgIdx));
+            // Register the parallelismIdx to it. It is safe to register there.
+            // Even if the Scheduling failed this time, the next scheduling will
+            // overwrite it.
+            req->mutable_messages(msgIdx)->set_parallelismid(parallelismId);
+            std::string userFuncPar =
+              userFunc + "_" + std::to_string(parallelismId);
 
-        std::string hostKey = userFunc + "_" + std::to_string(parallelismId);
-        // If no key is found, ignore it.
-        if (stateHost.find(hostKey) == stateHost.end()) {
-            continue;
+            bool unavailableFlag = false;
+            // If stateHost doesn't contains the userFuncPar, use round-robin.
+            if (stateHost.find(userFuncPar) == stateHost.end()) {
+                unavailableFlag = true;
+            }
+            // If host is not available, use round-robin.
+            host = stateHost[userFuncPar];
+            if (hostMap.find(host) == hostMap.end()) {
+                SPDLOG_WARN("Host {} is not disconnected, but the state in "
+                            "stored in here",
+                            host);
+                unavailableFlag = true;
+            }
+            // If the host has no slot, use round-robin.
+            if (numSlotsAvailable(hostMap[host]) <= 0) {
+                unavailableFlag = true;
+            }
+            if (!unavailableFlag) {
+                roundRobinFlag = false;
+            }
         }
-        std::string host = stateHost[hostKey];
-        // If host is not available, ignore it.
-        if (hostMap.find(host) == hostMap.end()) {
-            SPDLOG_WARN(
-              "Host {} is not disconnected, but the state in stored in here",
-              host);
-            continue;
+        // Allocate the request by using round robin.
+        if (roundRobinFlag) {
+            int hostIdx = rbCounter++ % hostMap.size();
+            host = getNthKey(hostMap, hostIdx);
+            // TODO - No, We give unlimited slots to each worker.
+            if (numSlotsAvailable(hostMap[host]) <= 0) {
+                SPDLOG_WARN("Host {} has no available slots", host);
+            }
         }
-        // If the host has no slot, ignore it.
-        if (numSlotsAvailable(hostMap[host]) <= 0) {
-            continue;
+        if (host == "unknown") {
+            throw std::runtime_error("Host is unknown");
         }
-        myDecision[msgIdx] = getIp(hostMap[host]);
-        // decision->addMessage(getIp(hostMap[host]), req->messages(msgIdx));
-        scheduledMessages.insert(msgIdx);
+        decision->addMessage(host, req->messages(msgIdx));
         numLeftToSchedule--;
         claimSlots(hostMap[host], 1);
-    }
-
-    int msgIdx = getNextMsgId(scheduledMessages, 0);
-    // The code for assigning remaining tasks by using bin-pack.
-    while (it < sortedHosts.end() && numLeftToSchedule > 0) {
-        int numOnThisHost =
-          std::min<int>(numLeftToSchedule, numSlotsAvailable(*it));
-        for (int i = 0; i < numOnThisHost && msgIdx < req->messages_size();
-             i++) {
-            // Schedule the message
-            myDecision[msgIdx] = getIp(*it);
-            // decision->addMessage(getIp(*it), req->messages(msgIdx));
-            scheduledMessages.insert(msgIdx);
-            numLeftToSchedule--;
-            // Get the next available mgsIdx.
-            msgIdx++;
-            msgIdx = getNextMsgId(scheduledMessages, msgIdx);
-            if (msgIdx >= req->messages_size()) {
-                // If msgIdx is beyond the range of messages, break out of the
-                // loop
-                break;
-            }
-        }
-
-        // If there are no more messages to schedule, we are done
-        if (numLeftToSchedule == 0) {
-            break;
-        }
-
-        // Otherwise, it means that we have exhausted this host, and need to
-        // check in the next one
-        it++;
     }
 
     // If we still have enough slots to schedule, we are out of slots
     if (numLeftToSchedule > 0) {
         return std::make_shared<SchedulingDecision>(NOT_ENOUGH_SLOTS_DECISION);
-    }
-
-    // Add the messages to the decision
-    for (int i = 0; i < myDecision.size(); i++) {
-        if (myDecision[i].empty()) {
-            throw std::runtime_error(
-              "The resource is enough but decision is not fully assigned.");
-        }
-        decision->addMessage(myDecision[i], req->messages(i));
     }
 
     // In case of a DIST_CHANGE decision (i.e. migration), we want to make sure

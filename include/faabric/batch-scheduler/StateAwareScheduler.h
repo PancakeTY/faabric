@@ -3,7 +3,6 @@
 #include <faabric/batch-scheduler/BatchScheduler.h>
 #include <faabric/planner/FunctionMetrics.h>
 #include <faabric/util/config.h>
-#include <faabric/util/clock.h>
 #include <faabric/util/hash.h>
 
 #include <map>
@@ -55,6 +54,9 @@ class StateAwareScheduler final : public BatchScheduler
       std::shared_ptr<faabric::BatchExecuteRequest> req,
       const DecisionType& decisionType) override;
 
+    // The counter used for round robin scheduling.
+    int rbCounter = 0;
+
     /***
      * The following maps are used to store the state of the functions.
      */
@@ -72,6 +74,8 @@ class StateAwareScheduler final : public BatchScheduler
 
     // Key is User-function : Value is <parititonInputKey, partitionStateKey>
     std::map<std::string, std::tuple<std::string, std::string>> funcStateRegMap;
+
+    void initializeState(HostMap& hostMap, std::string userFunc);
 
     void funcStateInitializer(
       std::map<std::string, std::tuple<std::string, std::string>>
