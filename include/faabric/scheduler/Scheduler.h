@@ -58,8 +58,7 @@ class BatchQueue
     }
     int getTimeInterval()
     {
-        return faabric::util::getGlobalClock().epochMillis() -
-               lastTime;
+        return faabric::util::getGlobalClock().epochMillis() - lastTime;
     }
     void resetlastTime()
     {
@@ -77,6 +76,13 @@ class Scheduler
     void executeBatch(std::shared_ptr<faabric::BatchExecuteRequest> req);
 
     void executeBatchLazy(std::shared_ptr<faabric::BatchExecuteRequest> req);
+
+    // Check the waiting queue peroiodically.
+    void batchTimerCheck();
+
+    void executeBatchForQueue(const std::string& userFuncPar,
+                              BatchQueue& waitingBatch,
+                              faabric::util::FullLock& lock);
 
     void reset();
 
@@ -178,6 +184,10 @@ class Scheduler
 
     // A queue stores the uninvoked requests: MAP<UserFuncPar, Queue>
     std::map<std::string, BatchQueue> waitingQueues;
+
+    // ---- Batch Execution ----
+    std::thread batchTimerThread;
+    bool stopBatchTimer = false;
 };
 
 }

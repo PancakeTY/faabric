@@ -39,12 +39,18 @@ Scheduler::Scheduler()
 {
     // Start the reaper thread
     reaperThread.start(conf.reaperIntervalSeconds);
+    batchTimerThread = std::thread(&Scheduler::batchTimerCheck, this);
 }
 
 Scheduler::~Scheduler()
 {
     if (!_isShutdown) {
         SPDLOG_ERROR("Destructing scheduler without shutting down first");
+    }
+    // Stop the batch timer thread
+    stopBatchTimer = true;
+    if (batchTimerThread.joinable()) {
+        batchTimerThread.join();
     }
 }
 
@@ -352,28 +358,54 @@ void Scheduler::executeBatchLazy(
         }
         if (waitingBatch.batchQueue.size() >= conf.batchSize ||
             waitingBatch.getTimeInterval() >= conf.batchInterval) {
-            auto fisrtMsg = waitingBatch.batchQueue.front();
-            // Generate new BatchExecuteRequest
-            auto newReq = faabric::util::batchExecFactory();
-            newReq->set_user(fisrtMsg->user());
-            newReq->set_function(fisrtMsg->function());
-            while (!waitingBatch.batchQueue.empty()) {
-                auto* message = newReq->add_messages();
-                *message = std::move(*waitingBatch.batchQueue.front());
-                message->set_queueendtime(
-                  faabric::util::getGlobalClock().epochMillis());
-                waitingBatch.batchQueue.pop();
+            executeBatchForQueue(userFuncPar, waitingBatch, lock);
+        }
+    }
+}
+
+void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
+                                     BatchQueue& waitingBatch,
+                                     faabric::util::FullLock& lock)
+{
+    auto fisrtMsg = waitingBatch.batchQueue.front();
+    // Generate new BatchExecuteRequest
+    auto newReq = faabric::util::batchExecFactory();
+    newReq->set_user(fisrtMsg->user());
+    newReq->set_function(fisrtMsg->function());
+    while (!waitingBatch.batchQueue.empty()) {
+        auto* message = newReq->add_messages();
+        *message = std::move(*waitingBatch.batchQueue.front());
+        message->set_queueendtime(
+          faabric::util::getGlobalClock().epochMillis());
+        waitingBatch.batchQueue.pop();
+    }
+    // Claim new Executor, we can bound the first msg here, since claim
+    // only needs the user and function of Message.
+    faabric::Message& localMsg = newReq->mutable_messages()->at(0);
+    std::shared_ptr<faabric::executor::Executor> e =
+      claimExecutor(localMsg, lock);
+    // Execute the tasks
+    e->executeBatchTasks(newReq);
+    // Reset the lastTime. It will be updated when inserted next time.
+    // We reset here just in case.
+    waitingBatch.resetlastTime();
+}
+
+void Scheduler::batchTimerCheck()
+{
+    while (!stopBatchTimer) {
+        std::this_thread::sleep_for(
+          std::chrono::milliseconds(conf.batchInterval));
+
+        faabric::util::FullLock lock(mx);
+        for (auto& [userFuncPar, waitingBatch] : waitingQueues) {
+            if (waitingBatch.batchQueue.size() == 0) {
+                continue;
             }
-            // Claim new Executor, we can bound the first msg here, since claim
-            // only needs the user and function of Message.
-            faabric::Message& localMsg = newReq->mutable_messages()->at(0);
-            std::shared_ptr<faabric::executor::Executor> e =
-              claimExecutor(localMsg, lock);
-            // Execute the tasks
-            e->executeBatchTasks(newReq);
-            // Reset the lastTime. It will be updated when inserted next time.
-            // We reset here just in case.
-            waitingBatch.resetlastTime();
+            if (waitingBatch.batchQueue.size() >= conf.batchSize ||
+                waitingBatch.getTimeInterval() >= conf.batchInterval) {
+                executeBatchForQueue(userFuncPar, waitingBatch, lock);
+            }
         }
     }
 }
