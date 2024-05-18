@@ -645,7 +645,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
             if (currentTime - lastParallelismUpdate >
                 parallelismUpdateInterval) {
                 lastParallelismUpdate = currentTime;
-                stateAwareScheduler->updateParallelism(collectMetrics());
+                stateAwareScheduler->updateParallelism(hostMapCopy, collectMetrics());
             }
         }
         decision = batchScheduler->makeSchedulingDecision(
@@ -957,9 +957,12 @@ void Planner::dispatchSchedulingDecision(
 
 std::map<std::string, FunctionMetrics> Planner::collectMetrics()
 {
+    // metrics states contains two types information: topology and function
+    // Topology info is stored with source function name: UserFunction
+    // Function info is stored with function name with parallelism: UserFuncPar
     std::map<std::string, FunctionMetrics> metricsStats;
     // Retrive the Latency Metrics from planner state
-    // Metrics of chained functions
+    // Metrics of chained functions (topology)
     for (auto [ithFunction, ithLatency] : state.chainFuncLatencyStats) {
         FunctionMetrics ithMetrics = FunctionMetrics(ithFunction);
         ithMetrics.isChained = true;

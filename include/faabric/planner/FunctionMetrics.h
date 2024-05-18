@@ -8,6 +8,7 @@ class FunctionMetrics
   public:
     FunctionMetrics(std::string functionIn);
 
+    // Function name _ parallelism
     std::string function;
     // chained means this metrics is statistics of chained functions not only
     // one function

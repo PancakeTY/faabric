@@ -41,6 +41,7 @@ class StateAwareScheduler final : public BatchScheduler
     void flushStateInfo();
 
     void updateParallelism(
+      HostMap& hostMap,
       std::map<std::string, faabric::planner::FunctionMetrics> metrics);
 
   private:
@@ -72,6 +73,15 @@ class StateAwareScheduler final : public BatchScheduler
     std::map<std::string, std::shared_ptr<util::ConsistentHashRing>>
       stateHashRing;
 
+    int maxParallelism;
+    // TODO - This can be detected by planner.
+    // Function Source: All the chained functions invoked subsequently
+    std::map<std::string, std::vector<std::string>> funcChainedMap;
+
+    // std::map<std::string, std::set<std::string>> funcChainedStateMap;
+
+    // TODO - This can be detected by state server and planner, but logic will
+    // be extreamly complex. (How to create new function state, BALABALA)
     // Key is User-function : Value is <parititonInputKey, partitionStateKey>
     std::map<std::string, std::tuple<std::string, std::string>> funcStateRegMap;
 

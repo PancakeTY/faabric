@@ -14,9 +14,31 @@ namespace faabric::batch_scheduler {
 void StateAwareScheduler::funcStateInitializer(
   std::map<std::string, std::tuple<std::string, std::string>> otherRegister)
 {
+    maxParallelism = faabric::util::getSystemConfig().maxParallelism;
+    // Register the chaining functions in the same topology.
+    funcChainedMap["stream_function_source"] = {
+        "stream_function_state_source", "stream_function_parstate_source"
+    };
+
+    funcChainedMap["wordcount_source"] = { "wordcount_source",
+                                           "wordcountsplit",
+                                           "wordcountsink" };
+
+    // Register the function state
     funcStateRegMap["stream_function_state"] = std::make_tuple("", "");
     funcStateRegMap["stream_function_parstate"] =
       std::make_tuple("partitionInputKey", "partitionStateKey");
+
+    // iterate over the Functions Chained Maps
+    for (const auto [ithSource, ithChainedFunctions] : funcChainedMap) {
+        // We only increase the parallelism for function-state functions.
+        for (const auto& function : ithChainedFunctions) {
+            if (!funcStateRegMap.contains(function)) {
+                continue;
+            }
+            // Update parallelism if necessary.
+        }
+    }
 }
 
 static std::map<std::string, int> getHostFreqCount(
@@ -414,7 +436,7 @@ std::shared_ptr<SchedulingDecision> StateAwareScheduler::makeSchedulingDecision(
     // Get the sorted list of hosts
     auto decisionType = getDecisionType(inFlightReqs, req);
     int numLeftToSchedule = req->messages_size();
-    
+
     // Round-Robin scheduling
     for (int msgIdx = 0; msgIdx < req->messages_size(); msgIdx++) {
         bool roundRobinFlag = true;
@@ -616,19 +638,101 @@ bool StateAwareScheduler::repartitionParitionedState(
 }
 
 void StateAwareScheduler::updateParallelism(
+  HostMap& hostMap,
   std::map<std::string, faabric::planner::FunctionMetrics> metrics)
 {
-    // TODO - adjust the parallelism. Currently, only print the metrics.
-    for (auto [ithFunc, ithMetrics] : metrics) {
-        SPDLOG_DEBUG("Metrics for {}: throughput: {}, processLatency: {}, "
-                     "averageWaitingTime: {}, lockCongestionTime: {}, "
-                     "lockHoldTime: {}",
-                     ithFunc,
-                     ithMetrics.throughput,
-                     ithMetrics.processLatency,
-                     ithMetrics.averageWaitingTime,
-                     ithMetrics.lockCongestionTime,
-                     ithMetrics.lockHoldTime);
+    // Iterate over the Functions Chained Maps
+    for (const auto& [ithSource, ithChainedFunctions] : funcChainedMap) {
+        // Record the average metrics for each function.
+        std::vector<std::string> userFunction;
+        std::vector<int> avgLatencyVector;
+        std::vector<int> avgLockTimeVector;
+        std::vector<int> statefulFunctionIdx;
+        int index = 0;
+
+        // We only increase the parallelism for function-state functions.
+        for (const auto& function : ithChainedFunctions) {
+            // Calculate the average Latency and Locking time for this function.
+            // For stateless functions, the parallelism is 1 and it is not
+            // recorded.
+            int avgLatency = 0;
+            int avgLockTime = 0;
+
+            // If this function is stateless
+            if (functionParallelism.find(function) ==
+                functionParallelism.end()) {
+                // Get the average processLatency and lockHoldTime for stateless
+                // functions.
+                auto metricIt = metrics.find(function + "_0");
+                if (metricIt != metrics.end()) {
+                    avgLatency = metricIt->second.processLatency;
+                    avgLockTime = metricIt->second.lockHoldTime;
+                }
+            } else {
+                // For each parallelism, get the average metrics
+                int totalLatency = 0;
+                int totalLockTime = 0;
+                for (int idx = 0; idx < functionParallelism[function]; idx++) {
+                    std::string userFuncPar =
+                      function + "_" + std::to_string(idx);
+                    auto metricIt = metrics.find(userFuncPar);
+                    if (metricIt != metrics.end()) {
+                        totalLatency += metricIt->second.processLatency;
+                        totalLockTime += metricIt->second.lockHoldTime;
+                    }
+                }
+                // Get the average processLatency and lockHoldTime.
+                if (functionParallelism[function] == 0) {
+                    SPDLOG_ERROR("Function {} has no parallelism", function);
+                } else {
+                    avgLatency = totalLatency / functionParallelism[function];
+                    avgLockTime = totalLockTime / functionParallelism[function];
+                }
+            }
+
+            // Record the average metrics for this function.
+            userFunction.push_back(function);
+            avgLatencyVector.push_back(avgLatency);
+            avgLockTimeVector.push_back(avgLockTime);
+            if (funcStateRegMap.find(function) != funcStateRegMap.end()) {
+                statefulFunctionIdx.push_back(index);
+            }
+            index++;
+        }
+
+        // Increase the stateful function's parallelism if necessary.
+        if (statefulFunctionIdx.empty()) {
+            continue;
+        }
+
+        for (const auto& idx : statefulFunctionIdx) {
+            // Calculate the latency except for the current function.
+            int totalLatency = 0;
+            for (int i = 0; i < avgLatencyVector.size(); i++) {
+                if (i == idx) {
+                    continue;
+                }
+                totalLatency += avgLatencyVector[i];
+            }
+            int incParallelism = 0;
+            int freeParallelism =
+              maxParallelism - functionParallelism[userFunction[idx]];
+            // Increase the parallelism if latency is higher than others.
+            if (avgLatencyVector.size() != 1) {
+                int avgLatency = totalLatency / (avgLatencyVector.size() - 1);
+                if (avgLatency == 0) {
+                    incParallelism = freeParallelism;
+                } else {
+                    incParallelism = std::min(
+                      avgLatencyVector[idx] / avgLatency - 1, freeParallelism);
+                }
+            }
+            // TODO - Increase Parallelism if Locking time it High
+            if (incParallelism > 0) {
+                increaseFunctionParallelism(
+                  incParallelism, userFunction[idx], hostMap);
+            }
+        }
     }
 }
 
