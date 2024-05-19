@@ -43,6 +43,8 @@ class SystemConfig
     // batchInterval unit: ms
     int batchInterval;
     int maxParallelism;
+    bool preloadParallelism;
+    std::string preloadParallelismInfo;
     // parallelismUpdateInterval unit: ms
     int parallelismUpdateInterval;
 

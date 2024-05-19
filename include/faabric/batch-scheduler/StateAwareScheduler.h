@@ -40,6 +40,8 @@ class StateAwareScheduler final : public BatchScheduler
 
     void flushStateInfo();
 
+    void preloadParallelism(HostMap& hostMap);
+
     void updateParallelism(
       HostMap& hostMap,
       std::map<std::string, faabric::planner::FunctionMetrics> metrics);
@@ -61,24 +63,24 @@ class StateAwareScheduler final : public BatchScheduler
     /***
      * The following maps are used to store the state of the functions.
      */
+    // FunctionUser : Preload Parallelism
+    std::map<std::string, int> preParallelismMap;
     // FunctionUser : Parallelism
     std::map<std::string, int> functionParallelism;
     // FunctionUser : Counter. It is used for shuffle grouping.
     std::map<std::string, int> functionCounter;
     // FunctionUser : Host
     std::map<std::string, std::string> stateHost;
-    // FunctionUser : Input Parition Key
-    std::map<std::string, std::string> statePartitionBy;
     // FunctionUser : hashRing
     std::map<std::string, std::shared_ptr<util::ConsistentHashRing>>
       stateHashRing;
+    // FunctionUser : Input Parition Key
+    std::map<std::string, std::string> statePartitionBy;
 
     int maxParallelism;
     // TODO - This can be detected by planner.
     // Function Source: All the chained functions invoked subsequently
     std::map<std::string, std::vector<std::string>> funcChainedMap;
-
-    // std::map<std::string, std::set<std::string>> funcChainedStateMap;
 
     // TODO - This can be detected by state server and planner, but logic will
     // be extreamly complex. (How to create new function state, BALABALA)

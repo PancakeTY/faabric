@@ -111,6 +111,7 @@ class Planner
 
     long lastParallelismUpdate;
     int parallelismUpdateInterval;
+    bool isPreloadParallelism;
 
     unsigned int chainedIdCounter = 0;
 

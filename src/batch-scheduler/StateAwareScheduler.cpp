@@ -29,16 +29,32 @@ void StateAwareScheduler::funcStateInitializer(
     funcStateRegMap["stream_function_parstate"] =
       std::make_tuple("partitionInputKey", "partitionStateKey");
 
-    // iterate over the Functions Chained Maps
-    for (const auto [ithSource, ithChainedFunctions] : funcChainedMap) {
-        // We only increase the parallelism for function-state functions.
-        for (const auto& function : ithChainedFunctions) {
-            if (!funcStateRegMap.contains(function)) {
-                continue;
-            }
-            // Update parallelism if necessary.
+    // Get the preload Infomation
+    std::string preloadInfo =
+      faabric::util::getSystemConfig().preloadParallelismInfo;
+
+    std::istringstream ss(preloadInfo);
+    std::string key;
+    int value;
+
+    while (std::getline(ss, key, ',') && ss >> value) {
+        preParallelismMap[key] = value;
+        // Discard the comma after the value
+        if (ss.peek() == ',') {
+            ss.ignore();
         }
     }
+
+    // // iterate over the Functions Chained Maps
+    // for (const auto [ithSource, ithChainedFunctions] : funcChainedMap) {
+    //     // We only increase the parallelism for function-state functions.
+    //     for (const auto& function : ithChainedFunctions) {
+    //         if (!funcStateRegMap.contains(function)) {
+    //             continue;
+    //         }
+    //         // Update parallelism if necessary.
+    //     }
+    // }
 }
 
 static std::map<std::string, int> getHostFreqCount(
@@ -584,10 +600,16 @@ StateAwareScheduler::increaseFunctionParallelism(
                             minHost,
                             partitionBy,
                             stateKey);
-        // TODO - Create the new function state here!
     }
     if (statePartitionBy.contains(userFunction)) {
-        repartitionParitionedState(userFunction, oldStateHostPtr);
+        // Change the state hashing ring
+        stateHashRing[userFunction] =
+          std::make_shared<faabric::util::ConsistentHashRing>(
+            functionParallelism[userFunction]);
+        // Repartition the state in old stateHost.
+        if (oldPara != 0) {
+            repartitionParitionedState(userFunction, oldStateHostPtr);
+        }
     }
     return oldStateHostPtr;
 }
@@ -635,6 +657,28 @@ bool StateAwareScheduler::repartitionParitionedState(
     }
     // Wait until get the response from all state server.
     return true;
+}
+
+void StateAwareScheduler::preloadParallelism(HostMap& hostMap)
+{
+    if (preParallelismMap.size() == 0) {
+        return;
+    }
+
+    for (const auto& [ithUserFunction, ithParallelism] : preParallelismMap) {
+        // If this function is already initialized, skip it.
+        if (functionParallelism.contains(ithUserFunction) &&
+            functionParallelism[ithUserFunction] == ithParallelism) {
+            continue;
+        }
+        // Otherwise initialize it. (We reset all the related stateinfo now)
+        functionParallelism[ithUserFunction] = 0;
+        functionCounter[ithUserFunction] = 0;
+        // Initialize the StateHost and stateHashRing
+        increaseFunctionParallelism(ithParallelism, ithUserFunction, hostMap);
+    }
+
+    preParallelismMap.clear();
 }
 
 void StateAwareScheduler::updateParallelism(

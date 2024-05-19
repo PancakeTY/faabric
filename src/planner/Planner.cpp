@@ -88,6 +88,7 @@ Planner::Planner()
     lastParallelismUpdate = faabric::util::getGlobalClock().epochMillis();
     parallelismUpdateInterval =
       faabric::util::getSystemConfig().parallelismUpdateInterval;
+    isPreloadParallelism = faabric::util::getSystemConfig().preloadParallelism;
 }
 
 PlannerConfig Planner::getConfig()
@@ -640,12 +641,18 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
           stateAwareScheduler =
             std::dynamic_pointer_cast<batch_scheduler::StateAwareScheduler>(
               batchScheduler);
-        if (stateAwareScheduler) {
+        // If preload the parallelism desision, we change the parallelism here
+        if (stateAwareScheduler && isPreloadParallelism) {
+            stateAwareScheduler->preloadParallelism(hostMapCopy);
+        }
+        // Otherwise adjust the parallelism according to the metrics
+        if (stateAwareScheduler && !isPreloadParallelism) {
             long currentTime = faabric::util::getGlobalClock().epochMillis();
             if (currentTime - lastParallelismUpdate >
                 parallelismUpdateInterval) {
                 lastParallelismUpdate = currentTime;
-                stateAwareScheduler->updateParallelism(hostMapCopy, collectMetrics());
+                stateAwareScheduler->updateParallelism(hostMapCopy,
+                                                       collectMetrics());
             }
         }
         decision = batchScheduler->makeSchedulingDecision(
