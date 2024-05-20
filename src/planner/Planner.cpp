@@ -273,7 +273,8 @@ bool Planner::isHostExpired(std::shared_ptr<Host> host, long epochTimeMs)
     return (epochTimeMs - host->registerts().epochms()) > hostTimeoutMs;
 }
 
-void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg)
+void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg,
+                               bool locked)
 {
     int appId = msg->appid();
     int msgId = msg->id();
@@ -288,7 +289,10 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg)
         return;
     }
 
-    faabric::util::FullLock lock(plannerMx);
+    faabric::util::FullLock lock;
+    if (!locked) {
+        lock = faabric::util::FullLock(plannerMx);
+    }
 
     SPDLOG_DEBUG("Planner setting message result (id: {}) for {}:{}:{}",
                  msg->id(),
@@ -396,6 +400,17 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg)
             faabric::scheduler::getFunctionCallClient(host)->setMessageResult(
               msg);
         }
+    }
+}
+
+void Planner::setMessageResultBatch(
+  std::shared_ptr<faabric::BatchExecuteRequest> batchMsg)
+{
+    faabric::util::FullLock lock(plannerMx);
+
+    for (int msgIdx = 0; msgIdx < batchMsg->messages_size(); msgIdx++) {
+        auto msg = batchMsg->messages(msgIdx);
+        setMessageResult(std::make_shared<faabric::Message>(msg), true);
     }
 }
 

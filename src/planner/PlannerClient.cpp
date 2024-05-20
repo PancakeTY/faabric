@@ -140,6 +140,23 @@ void PlannerClient::setMessageResult(std::shared_ptr<faabric::Message> msg)
     asyncSend(PlannerCalls::SetMessageResult, msg.get());
 }
 
+void PlannerClient::setMessageResultBatch(
+  std::shared_ptr<faabric::BatchExecuteRequest> req)
+{
+    // Set finish timestamp if not set by downstream callers
+    for (int i = 0; i < req->messages_size(); i++) {
+        auto msg = req->mutable_messages(i);
+        if (msg->finishtimestamp() == 0) {
+            msg->set_finishtimestamp(
+              faabric::util::getGlobalClock().epochMillis());
+        }
+    }
+
+    // Let the planner know this function has finished execution. This will
+    // wake any thread waiting on this result
+    asyncSend(PlannerCalls::SetMessageResultBatch, req.get());
+}
+
 // This function sets a message result locally. It is invoked as a callback
 // from the planner to notify all hosts waiting for a message result that the
 // result is ready
@@ -413,8 +430,6 @@ void PlannerClient::preloadSchedulingDecision(
 // ------
 // Function State calls
 // ------
-
-
 
 // -----------------------------------
 // Static setter/getters

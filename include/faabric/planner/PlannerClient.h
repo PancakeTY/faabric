@@ -77,6 +77,9 @@ class PlannerClient final : public faabric::transport::MessageEndpointClient
 
     void setMessageResult(std::shared_ptr<faabric::Message> msg);
 
+    void setMessageResultBatch(
+      std::shared_ptr<faabric::BatchExecuteRequest> req);
+
     void setMessageResultLocally(std::shared_ptr<faabric::Message> msg);
 
     faabric::Message getMessageResult(int appId, int msgId, int timeoutMs);

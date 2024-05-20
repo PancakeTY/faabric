@@ -26,6 +26,10 @@ class ExecutorContext
                     std::shared_ptr<faabric::BatchExecuteRequest> reqIn,
                     int msgIdx);
 
+    std::vector<std::string> chainedFunctionName;
+    std::vector<int> chainedMsgId;
+    std::vector<std::vector<uint8_t>> chainedInput;
+
     static bool isSet();
 
     static void set(Executor* executorIn,

@@ -59,7 +59,12 @@ class Planner
 
     // Setters/getters for individual message results
 
-    void setMessageResult(std::shared_ptr<faabric::Message> msg);
+    void setMessageResult(
+      std::shared_ptr<faabric::Message> msg,
+      bool locked = false);
+
+    void setMessageResultBatch(
+      std::shared_ptr<faabric::BatchExecuteRequest> batchMsg);
 
     std::shared_ptr<faabric::Message> getMessageResult(
       std::shared_ptr<faabric::Message> msg);

@@ -27,6 +27,10 @@ void PlannerServer::doAsyncRecv(transport::Message& message)
             recvSetMessageResult(message.udata());
             break;
         }
+        case PlannerCalls::SetMessageResultBatch: {
+            recvSetMessageResultBatch(message.udata());
+            break;
+        }
         default: {
             // If we don't recognise the header, let the client fail, but don't
             // crash the planner
@@ -144,6 +148,13 @@ void PlannerServer::recvSetMessageResult(std::span<const uint8_t> buffer)
 {
     PARSE_MSG(Message, buffer.data(), buffer.size());
     planner.setMessageResult(std::make_shared<faabric::Message>(parsedMsg));
+}
+
+void PlannerServer::recvSetMessageResultBatch(std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(BatchExecuteRequest, buffer.data(), buffer.size());
+    planner.setMessageResultBatch(
+      std::make_shared<faabric::BatchExecuteRequest>(parsedMsg));
 }
 
 std::unique_ptr<google::protobuf::Message> PlannerServer::recvGetMessageResult(

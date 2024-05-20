@@ -470,11 +470,8 @@ void Executor::threadPoolThread(std::stop_token st, int threadPoolIdx)
             }
 
             // Set normal function result
-            for (int i = 0; i < task.req->messages_size(); i++) {
-                faabric::planner::getPlannerClient().setMessageResult(
-                  std::make_shared<faabric::Message>(
-                    task.req->mutable_messages()->at(i)));
-            }
+            faabric::planner::getPlannerClient().setMessageResultBatch(
+              task.req);
             continue;
         }
 
