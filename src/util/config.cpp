@@ -49,13 +49,18 @@ void SystemConfig::initialise()
 
     // STREAM
     batchProcess = getEnvVar("BATCH_PROCESS", "on");
-    batchSize =  this->getSystemConfIntParam("BATCH_SIZE", "2");
+    batchSize = this->getSystemConfIntParam("BATCH_SIZE", "2");
     batchInterval = this->getSystemConfIntParam("BATCH_INTERVAL", "10000");
     preloadParallelism = getEnvVar("PRELOAD_PARALLELISM", "on") == "on";
-    preloadParallelismInfo = getEnvVar("PRELOAD_PARALLELISM_INFO", "stream_function_parstate,2");
+    preloadParallelismInfo =
+      getEnvVar("PRELOAD_PARALLELISM_INFO", "stream_function_parstate,2");
     maxParallelism = this->getSystemConfIntParam("MAX_PARALLELISM", "5");
     parallelismUpdateInterval =
       this->getSystemConfIntParam("PARALLELISM_UPDATE_INTERVAL", "60000");
+    // In stream processing, we don't want to limit the maximum requests
+    // processed in one worker simultaneously. Thus, we set the value to a
+    // large number.
+    overWriteSlots = this->getSystemConfIntParam("OVERWRITE_SLOTS", "10000000");
 
     // Endpoint
     endpointInterface = getEnvVar("ENDPOINT_INTERFACE", "");

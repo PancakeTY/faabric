@@ -47,6 +47,7 @@ class SystemConfig
     std::string preloadParallelismInfo;
     // parallelismUpdateInterval unit: ms
     int parallelismUpdateInterval;
+    int overWriteSlots;
 
     // Endpoint
     std::string endpointInterface;

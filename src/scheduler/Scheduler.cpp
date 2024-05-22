@@ -73,6 +73,9 @@ void Scheduler::addHostToGlobalSet(
     } else if (hostIp == thisHost) {
         req->mutable_host()->set_slots(faabric::util::getUsableCores());
         req->mutable_host()->set_usedslots(0);
+        if (conf.overWriteSlots != 0) {
+            req->mutable_host()->set_slots(conf.overWriteSlots);
+        }
     }
 
     int plannerTimeout = faabric::planner::getPlannerClient().registerHost(req);
