@@ -376,29 +376,39 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
     newReq->set_user(fisrtMsg->user());
     newReq->set_function(fisrtMsg->function());
     while (!waitingBatch.batchQueue.empty()) {
+        // TODO - make sure we have enough resource.
         auto* message = newReq->add_messages();
         *message = std::move(*waitingBatch.batchQueue.front());
         message->set_queueendtime(
           faabric::util::getGlobalClock().epochMillis());
         waitingBatch.batchQueue.pop();
+        // If the batch size is reached, execute it.
+        if (newReq->messages_size() >= conf.batchSize ||
+            waitingBatch.batchQueue.empty()) {
+            // Claim new Executor, we can bound the first msg here, since claim
+            // only needs the user and function of Message.
+            faabric::Message& localMsg = newReq->mutable_messages()->at(0);
+            std::shared_ptr<faabric::executor::Executor> e =
+              claimExecutor(localMsg, lock);
+            // Execute the tasks
+            e->executeBatchTasks(newReq);
+            // Reset the newReq
+            newReq = faabric::util::batchExecFactory();
+            newReq->set_user(fisrtMsg->user());
+            newReq->set_function(fisrtMsg->function());
+        }
     }
-    // Claim new Executor, we can bound the first msg here, since claim
-    // only needs the user and function of Message.
-    faabric::Message& localMsg = newReq->mutable_messages()->at(0);
-    std::shared_ptr<faabric::executor::Executor> e =
-      claimExecutor(localMsg, lock);
-    // Execute the tasks
-    e->executeBatchTasks(newReq);
     // Reset the lastTime. It will be updated when inserted next time.
     // We reset here just in case.
-    waitingBatch.resetlastTime();
+    if (waitingBatch.batchQueue.empty()) {
+        waitingBatch.resetlastTime();
+    }
 }
 
 void Scheduler::batchTimerCheck()
 {
     while (!stopBatchTimer) {
-        std::this_thread::sleep_for(
-          std::chrono::milliseconds(conf.batchInterval));
+        std::this_thread::sleep_for(std::chrono::milliseconds(conf.batchCheckInterval));
 
         faabric::util::FullLock lock(mx);
         for (auto& [userFuncPar, waitingBatch] : waitingQueues) {

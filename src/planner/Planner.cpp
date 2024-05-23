@@ -352,7 +352,7 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg,
                 state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
                   msgId, waitingTime);
                 // Print the metrics Only for debug now.
-                state.funcLatencyStats[userFuncPar]->print();
+                // state.funcLatencyStats[userFuncPar]->print();
             }
 
             // Record the Chain metrics
@@ -365,7 +365,7 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg,
                     state.chainFuncLatencyStats.end()) {
                     state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
                       chainedId);
-                    state.chainFuncLatencyStats[userFunc]->print();
+                    // state.chainFuncLatencyStats[userFunc]->print();
                 }
                 state.chainedInflights.erase(chainedId);
             }
