@@ -45,6 +45,7 @@ message HttpMessage {
         EXECUTE_BATCH = 10;
         EXECUTE_BATCH_STATUS = 11;
         PRELOAD_SCHEDULING_DECISION = 12;
+        GET_FUNCTION_METRICS = 13;
     }
 
     Type type = 1 [json_name = "http_type"];
@@ -122,3 +123,24 @@ message AvailableHostsResponse {
     repeated Host hosts = 1;
 }
 
+message ChainedFunctionsMetricsRes{
+    string name = 1;
+    int32 throughput = 2;
+    int32 processLatency = 3;
+}
+
+message FunctionMetricsRes{
+    string name = 1;
+    int32 throughput = 2;
+    int32 processLatency = 3;
+    int32 averageWaitingTime = 4;
+    // The following parameters are only used for stateful functions
+    string hostIp = 5;
+    int32 lockCongestionTime = 6;
+    int32 lockHoldTime = 7;   
+}
+
+message FunctionMetricResponse{
+    repeated ChainedFunctionsMetricsRes chainedMetrics = 1;
+    repeated FunctionMetricsRes functionMetrics = 2;
+}

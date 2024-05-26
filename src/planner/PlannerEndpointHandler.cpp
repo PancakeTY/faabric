@@ -325,6 +325,52 @@ void PlannerEndpointHandler::onRequest(
 
             return ctx.sendFunction(std::move(response));
         }
+        case faabric::planner::HttpMessage_Type_GET_FUNCTION_METRICS: {
+            SPDLOG_DEBUG("Planner received GET_FUNCTION_METRICS request");
+            // Collect metrics
+            std::map<std::string, FunctionMetrics> metrics =
+              faabric::planner::getPlanner().collectMetrics();
+            // Prepare response
+            faabric::planner::FunctionMetricResponse metricsResponse;
+            auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
+            std::map<std::string, std::string> stateHost;
+            std::shared_ptr<faabric::batch_scheduler::StateAwareScheduler>
+              stateAwareScheduler = std::dynamic_pointer_cast<
+                faabric::batch_scheduler::StateAwareScheduler>(batchScheduler);
+            if (stateAwareScheduler) {
+                stateHost = stateAwareScheduler->getStateHostMap();
+            }
+            for (const auto& [funcName, funcMetrics] : metrics) {
+                // For chained functions, we add it as ChainedFunctionsMetrics
+                if (funcMetrics.isChained) {
+                    auto* metricsResp = metricsResponse.add_chainedmetrics();
+                    metricsResp->set_name(funcMetrics.function);
+                    metricsResp->set_throughput(funcMetrics.throughput);
+                    metricsResp->set_processlatency(funcMetrics.processLatency);
+                }
+                // For single function, we add it as FunctionMetrics
+                else {
+                    auto* metricsResp = metricsResponse.add_functionmetrics();
+                    metricsResp->set_name(funcMetrics.function);
+                    metricsResp->set_throughput(funcMetrics.throughput);
+                    metricsResp->set_processlatency(funcMetrics.processLatency);
+                    metricsResp->set_averagewaitingtime(
+                      funcMetrics.averageWaitingTime);
+                    // The following parameters are only used for stateful
+                    // functions
+                    auto it = stateHost.find(funcMetrics.function);
+                    if (it != stateHost.end()) {
+                        metricsResp->set_hostip(it->second);
+                        metricsResp->set_lockcongestiontime(
+                          funcMetrics.lockCongestionTime);
+                        metricsResp->set_lockholdtime(funcMetrics.lockHoldTime);
+                    }
+                }
+            }
+            response.result(beast::http::status::ok);
+            response.body() = faabric::util::messageToJson(metricsResponse);
+            return ctx.sendFunction(std::move(response));
+        }
         default: {
             SPDLOG_ERROR("Unrecognised message type {}", msg.type());
             response.result(beast::http::status::bad_request);

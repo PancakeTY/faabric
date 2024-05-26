@@ -80,6 +80,8 @@ class FunctionState
     int parallelismId;
     bool isMaster = false;
 
+    size_t getStateSize();
+
   private:
     // In function state, we sue counting_semaphore to lock data. Since mutex
     // must be lock and unlock by the same thread.

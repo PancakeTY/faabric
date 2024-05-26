@@ -373,19 +373,24 @@ void State::deleteFS(const std::string& user,
     }
 }
 
-    std::map<std::string, std::map<std::string, int>> State::getFSMetrics(){
-        std::map<std::string, std::map<std::string, int>> metrics;
-        // Only shared lock will be used here
-        {
-            faabric::util::SharedLock sharedLock(fsmapMutex);
-            for (auto& kv : fsMap) {
-                // Only the master function states record the metrics.
-                if (kv.second->isMaster) {
-                    metrics[kv.first] = kv.second->getMetrics();
-                }
+std::map<std::string, std::map<std::string, int>> State::getFSMetrics()
+{
+    std::map<std::string, std::map<std::string, int>> metrics;
+    // Only shared lock will be used here
+    {
+        faabric::util::SharedLock sharedLock(fsmapMutex);
+        for (auto& kv : fsMap) {
+            if (kv.second->getStateSize() == 0) {
+                // If the state has never been invoked
+                continue;
+            }
+            // Only the master function states record the metrics.
+            if (kv.second->isMaster) {
+                metrics[kv.first] = kv.second->getMetrics();
             }
         }
-        return metrics;
     }
+    return metrics;
+}
 
 }

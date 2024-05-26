@@ -625,6 +625,14 @@ std::map<std::string, int> FunctionState::getMetrics()
     return metricsResult;
 }
 
+size_t FunctionState::getStateSize()
+{
+    sem.acquire();
+    size_t thisStateSize = stateSize;
+    sem.release();
+    return thisStateSize;
+}
+
 // --------------------------------------------
 // Static properties and methods
 // --------------------------------------------

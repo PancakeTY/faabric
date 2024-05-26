@@ -46,6 +46,10 @@ class StateAwareScheduler final : public BatchScheduler
       HostMap& hostMap,
       std::map<std::string, faabric::planner::FunctionMetrics> metrics);
 
+    const std::map<std::string, std::string>& getStateHostMap() const {
+        return stateHost;
+    }
+
   private:
     bool isFirstDecisionBetter(
       std::shared_ptr<SchedulingDecision> decisionA,
