@@ -51,10 +51,12 @@ void SystemConfig::initialise()
     batchProcess = getEnvVar("BATCH_PROCESS", "on");
     batchSize = this->getSystemConfIntParam("BATCH_SIZE", "10");
     batchInterval = this->getSystemConfIntParam("BATCH_INTERVAL", "100");
-    batchCheckInterval = this->getSystemConfIntParam("BATCH_CHECK_INTERVAL", "10");
+    batchCheckInterval =
+      this->getSystemConfIntParam("BATCH_CHECK_INTERVAL", "10");
     preloadParallelism = getEnvVar("PRELOAD_PARALLELISM", "on") == "on";
     preloadParallelismInfo =
-      getEnvVar("PRELOAD_PARALLELISM_INFO", "stream_function_parstate,2");
+      getEnvVar("PRELOAD_PARALLELISM_INFO",
+                "stream_function_parstate,2,stream_wordcount_count,2");
     maxParallelism = this->getSystemConfIntParam("MAX_PARALLELISM", "5");
     parallelismUpdateInterval =
       this->getSystemConfIntParam("PARALLELISM_UPDATE_INTERVAL", "60000");

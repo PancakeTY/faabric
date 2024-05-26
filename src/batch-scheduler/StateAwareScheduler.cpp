@@ -21,12 +21,14 @@ void StateAwareScheduler::funcStateInitializer(
     };
 
     funcChainedMap["wordcount_source"] = { "wordcount_source",
-                                           "wordcountsplit",
-                                           "wordcountsink" };
+                                           "wordcount_split",
+                                           "wordcount_count" };
 
     // Register the function state
     funcStateRegMap["stream_function_state"] = std::make_tuple("", "");
     funcStateRegMap["stream_function_parstate"] =
+      std::make_tuple("partitionInputKey", "partitionStateKey");
+    funcStateRegMap["wordcount_count"] =
       std::make_tuple("partitionInputKey", "partitionStateKey");
 
     // Get the preload Infomation
