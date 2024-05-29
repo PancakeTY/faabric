@@ -73,7 +73,7 @@ class ConsistentHashRing
     {
         std::size_t hash = faabric::util::hashVector(keyBytes);
         // Print hash
-        std::cout << "Hash: " << hash << std::endl;
+        // std::cout << "Hash: " << hash << std::endl;
         auto it = ring.lower_bound(hash);
         if (it == ring.end()) {
             it = ring.begin();

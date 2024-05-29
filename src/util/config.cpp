@@ -56,7 +56,7 @@ void SystemConfig::initialise()
     preloadParallelism = getEnvVar("PRELOAD_PARALLELISM", "on") == "on";
     preloadParallelismInfo =
       getEnvVar("PRELOAD_PARALLELISM_INFO",
-                "stream_function_parstate,2,stream_wordcount_count,2");
+                "stream_function_parstate,1,stream_wordcount_count,1");
     maxParallelism = this->getSystemConfIntParam("MAX_PARALLELISM", "5");
     parallelismUpdateInterval =
       this->getSystemConfIntParam("PARALLELISM_UPDATE_INTERVAL", "60000");
