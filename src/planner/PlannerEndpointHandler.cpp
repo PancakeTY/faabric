@@ -371,6 +371,75 @@ void PlannerEndpointHandler::onRequest(
             response.body() = faabric::util::messageToJson(metricsResponse);
             return ctx.sendFunction(std::move(response));
         }
+        case faabric::planner::HttpMessage_Type_SCALE_FUNCTION_PARALLELISM: {
+            SPDLOG_DEBUG("Planner received SCALE_FUNCTION_PARALLELISM request");
+            faabric::planner::FunctionScaleRequest rawReq;
+            try {
+                faabric::util::jsonToMessage(msg.payloadjson(), &rawReq);
+            } catch (faabric::util::JsonSerialisationException e) {
+                response.result(beast::http::status::bad_request);
+                response.body() = std::string("Bad JSON in body's payload");
+                return ctx.sendFunction(std::move(response));
+            }
+            std::string user = rawReq.user();
+            std::string func = rawReq.function();
+            std::string userFunc = user + "_" + func;
+            int newParallelism = rawReq.parallelism();
+            SPDLOG_DEBUG("Scaling function {} for user {} to parallelism {}",
+                         func,
+                         user,
+                         newParallelism);
+            auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
+            std::shared_ptr<faabric::batch_scheduler::StateAwareScheduler>
+              stateAwareScheduler = std::dynamic_pointer_cast<
+                faabric::batch_scheduler::StateAwareScheduler>(batchScheduler);
+            if (!stateAwareScheduler) {
+                SPDLOG_ERROR(
+                  "Failed to cast BatchScheduler to StateAwareBatchScheduler");
+                response.result(beast::http::status::internal_server_error);
+                response.body() =
+                  std::string("Failed to get StateAwareScheduler");
+                return ctx.sendFunction(std::move(response));
+            }
+            auto parallelismMap =
+              stateAwareScheduler->getFunctionParallelismMap();
+            if (!parallelismMap.contains(userFunc)) {
+                SPDLOG_ERROR("Function {} not found in parallelism map",
+                             userFunc);
+                response.result(beast::http::status::internal_server_error);
+                response.body() = std::string("Function not found in map");
+                return ctx.sendFunction(std::move(response));
+            }
+            int incParallelism = newParallelism - parallelismMap.at(userFunc);
+            if (incParallelism <= 0) {
+                SPDLOG_ERROR("Invalid parallelism increment {}",
+                             incParallelism);
+                response.result(beast::http::status::bad_request);
+                response.body() = std::string("Invalid parallelism increment");
+                return ctx.sendFunction(std::move(response));
+            }
+            faabric::planner::getPlanner().updateFuncParallelism(
+              userFunc, incParallelism);
+
+            response.result(beast::http::status::ok);
+            response.body() = std::string("Parallelism updated successfully");
+            return ctx.sendFunction(std::move(response));
+        }
+        case faabric::planner::HttpMessage_Type_RESET_BATCH_SIZE: {
+            SPDLOG_DEBUG("Planner received RESET_BATCH_SIZE request");
+            faabric::planner::BatchResetRequest rawReq;
+            try {
+                faabric::util::jsonToMessage(msg.payloadjson(), &rawReq);
+            } catch (faabric::util::JsonSerialisationException e) {
+                response.result(beast::http::status::bad_request);
+                response.body() = std::string("Bad JSON in body's payload");
+                return ctx.sendFunction(std::move(response));
+            }
+            int32_t batchsize = rawReq.batchsize();
+            faabric::planner::getPlanner().resetBatchsize(batchsize);
+
+            return ctx.sendFunction(std::move(response));
+        }
         default: {
             SPDLOG_ERROR("Unrecognised message type {}", msg.type());
             response.result(beast::http::status::bad_request);

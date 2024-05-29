@@ -108,6 +108,12 @@ void FunctionCallClient::setMessageResult(std::shared_ptr<faabric::Message> msg)
     }
 }
 
+void FunctionCallClient::resetBatchSize(
+  std::shared_ptr<faabric::planner::BatchResetRequest> req)
+{
+    asyncSend(faabric::scheduler::FunctionCalls::ResetBatchsize, req.get());
+}
+
 // -----------------------------------
 // Static setter/getters
 // -----------------------------------

@@ -98,7 +98,10 @@ class Planner
     // ----------
     // Function State public API
     // ----------
+    bool updateFuncParallelism(const std::string& userFunction,
+                               int changedParallelism);
 
+    bool resetBatchsize(int32_t newSize);
     // ----------
     // Metrics public API
     // ----------

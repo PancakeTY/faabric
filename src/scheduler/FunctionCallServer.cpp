@@ -34,6 +34,10 @@ void FunctionCallServer::doAsyncRecv(transport::Message& message)
             recvSetMessageResult(message.udata());
             break;
         }
+        case faabric::scheduler::FunctionCalls::ResetBatchsize: {
+            recvResetBatchsize(message.udata());
+            break;
+        }
         default: {
             throw std::runtime_error(
               fmt::format("Unrecognized async call header: {}", header));
@@ -90,7 +94,8 @@ void FunctionCallServer::recvExecuteFunctions(std::span<const uint8_t> buffer)
       std::make_shared<faabric::BatchExecuteRequest>(parsedMsg));
 }
 
-void FunctionCallServer::recvExecuteFunctionsLazy(std::span<const uint8_t> buffer)
+void FunctionCallServer::recvExecuteFunctionsLazy(
+  std::span<const uint8_t> buffer)
 {
     PARSE_MSG(faabric::BatchExecuteRequest, buffer.data(), buffer.size())
 
@@ -113,4 +118,12 @@ void FunctionCallServer::recvSetMessageResult(std::span<const uint8_t> buffer)
     faabric::planner::getPlannerClient().setMessageResultLocally(
       std::make_shared<faabric::Message>(parsedMsg));
 }
+
+void FunctionCallServer::recvResetBatchsize(std::span<const uint8_t> buffer) {
+    PARSE_MSG(faabric::planner::BatchResetRequest, buffer.data(), buffer.size());
+    int32_t batchSize = parsedMsg.batchsize();
+    SPDLOG_INFO("Resetting batch size to {}", batchSize);
+    faabric::scheduler::getScheduler().resetBatchsize(batchSize);
+}
+
 }

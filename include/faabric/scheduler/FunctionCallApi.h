@@ -8,5 +8,6 @@ enum FunctionCalls
     Flush = 2,
     SetMessageResult = 3,
     ExecuteFunctionsLazy = 4,
+    ResetBatchsize = 5,
 };
 }

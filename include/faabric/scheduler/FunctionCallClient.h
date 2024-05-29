@@ -1,5 +1,6 @@
 #pragma once
 
+#include <faabric/planner/planner.pb.h>
 #include <faabric/proto/faabric.pb.h>
 #include <faabric/scheduler/FunctionCallApi.h>
 #include <faabric/transport/MessageEndpoint.h>
@@ -43,6 +44,9 @@ class FunctionCallClient : public faabric::transport::MessageEndpointClient
     void executeFunctions(std::shared_ptr<faabric::BatchExecuteRequest> req);
 
     void setMessageResult(std::shared_ptr<faabric::Message> msg);
+
+    void resetBatchSize(
+      std::shared_ptr<faabric::planner::BatchResetRequest> req);
 };
 
 // -----------------------------------

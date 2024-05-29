@@ -50,6 +50,10 @@ class StateAwareScheduler final : public BatchScheduler
         return stateHost;
     }
 
+    const std::map<std::string, int>& getFunctionParallelismMap() const {
+        return functionParallelism;
+    } 
+
   private:
     bool isFirstDecisionBetter(
       std::shared_ptr<SchedulingDecision> decisionA,

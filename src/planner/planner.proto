@@ -46,6 +46,8 @@ message HttpMessage {
         EXECUTE_BATCH_STATUS = 11;
         PRELOAD_SCHEDULING_DECISION = 12;
         GET_FUNCTION_METRICS = 13;
+        SCALE_FUNCTION_PARALLELISM = 14;
+        RESET_BATCH_SIZE = 15;
     }
 
     Type type = 1 [json_name = "http_type"];
@@ -143,4 +145,14 @@ message FunctionMetricsRes{
 message FunctionMetricResponse{
     repeated ChainedFunctionsMetricsRes chainedMetrics = 1;
     repeated FunctionMetricsRes functionMetrics = 2;
+}
+
+message FunctionScaleRequest{
+    string user = 1;
+    string function = 2;
+    int32 parallelism = 3;
+}
+
+message BatchResetRequest{
+    int32 batchsize = 1;
 }

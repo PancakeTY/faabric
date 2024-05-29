@@ -84,6 +84,8 @@ class Scheduler
                               BatchQueue& waitingBatch,
                               faabric::util::FullLock& lock);
 
+    void resetBatchsize(int32_t newSize);
+
     void reset();
 
     void resetThreadLocalCache();
@@ -153,6 +155,8 @@ class Scheduler
     std::shared_mutex mx;
 
     std::atomic<bool> _isShutdown = false;
+
+    int executeBatchsize;
 
     // ---- Executors ----
     std::unordered_map<

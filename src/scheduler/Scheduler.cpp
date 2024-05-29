@@ -37,6 +37,7 @@ Scheduler::Scheduler()
   , reg(faabric::snapshot::getSnapshotRegistry())
   , broker(faabric::transport::getPointToPointBroker())
 {
+    executeBatchsize = conf.batchSize;
     // Start the reaper thread
     reaperThread.start(conf.reaperIntervalSeconds);
     batchTimerThread = std::thread(&Scheduler::batchTimerCheck, this);
@@ -359,7 +360,7 @@ void Scheduler::executeBatchLazy(
         if (waitingBatch.batchQueue.size() == 0) {
             continue;
         }
-        if (waitingBatch.batchQueue.size() >= conf.batchSize ||
+        if (waitingBatch.batchQueue.size() >= executeBatchsize ||
             waitingBatch.getTimeInterval() >= conf.batchInterval) {
             executeBatchForQueue(userFuncPar, waitingBatch, lock);
         }
@@ -383,7 +384,7 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
           faabric::util::getGlobalClock().epochMillis());
         waitingBatch.batchQueue.pop();
         // If the batch size is reached, execute it.
-        if (newReq->messages_size() >= conf.batchSize ||
+        if (newReq->messages_size() >= executeBatchsize ||
             waitingBatch.batchQueue.empty()) {
             // Claim new Executor, we can bound the first msg here, since claim
             // only needs the user and function of Message.
@@ -408,19 +409,25 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
 void Scheduler::batchTimerCheck()
 {
     while (!stopBatchTimer) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(conf.batchCheckInterval));
+        std::this_thread::sleep_for(
+          std::chrono::milliseconds(conf.batchCheckInterval));
 
         faabric::util::FullLock lock(mx);
         for (auto& [userFuncPar, waitingBatch] : waitingQueues) {
             if (waitingBatch.batchQueue.size() == 0) {
                 continue;
             }
-            if (waitingBatch.batchQueue.size() >= conf.batchSize ||
+            if (waitingBatch.batchQueue.size() >= executeBatchsize ||
                 waitingBatch.getTimeInterval() >= conf.batchInterval) {
                 executeBatchForQueue(userFuncPar, waitingBatch, lock);
             }
         }
     }
+}
+
+void Scheduler::resetBatchsize(int32_t newSize) {
+    faabric::util::FullLock lock(mx);
+    executeBatchsize = newSize;
 }
 
 void Scheduler::clearRecordedMessages()

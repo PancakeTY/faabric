@@ -1031,6 +1031,44 @@ std::map<std::string, FunctionMetrics> Planner::collectMetrics()
     return metricsStats;
 }
 
+bool Planner::updateFuncParallelism(const std::string& userFunction,
+                                    int changedParallelism)
+{
+    SPDLOG_DEBUG("Planner received request to changed parallelism for {} by {}",
+                 userFunction,
+                 changedParallelism);
+    faabric::util::FullLock lock(plannerMx);
+    auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
+    std::shared_ptr<batch_scheduler::StateAwareScheduler> stateAwareScheduler =
+      std::dynamic_pointer_cast<batch_scheduler::StateAwareScheduler>(
+        batchScheduler);
+    if (!stateAwareScheduler) {
+        SPDLOG_ERROR("State-aware scheduler is not enabled");
+        return false;
+    }
+    auto hostMapCopy = convertToBatchSchedHostMap(state.hostMap);
+    stateAwareScheduler->increaseFunctionParallelism(
+      changedParallelism, userFunction, hostMapCopy);
+    return true;
+}
+
+bool Planner::resetBatchsize(int32_t newSize)
+{
+    auto availableHosts = getAvailableHosts();
+    faabric::planner::BatchResetRequest req;
+    req.set_batchsize(newSize);
+
+    for (const auto& host : availableHosts) {
+        SPDLOG_INFO(
+          "Planner resize the batchsize {} to {}", host->ip(), newSize);
+        faabric::scheduler::getFunctionCallClient(host->ip())
+          ->resetBatchSize(
+            std::make_shared<faabric::planner::BatchResetRequest>(req));
+    }
+
+    return true;
+}
+
 Planner& getPlanner()
 {
     static Planner planner;
