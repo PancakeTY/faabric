@@ -509,11 +509,11 @@ bool FunctionState::rePartitionState(const std::string& newStateHost)
     std::vector<uint8_t> tempStateVec(newStateHost.begin(), newStateHost.end());
     std::map<std::string, std::string> newStateMap =
       faabric::util::deserializeMapBinary(tempStateVec);
-    // Print the newStateMap
-    SPDLOG_TRACE("New state map for {}/{}-{}:", user, function, parallelismId);
-    for (auto& [key, value] : newStateMap) {
-        SPDLOG_TRACE("New state map: {} -> {}", key, value);
-    }
+    // // Print the newStateMap
+    // SPDLOG_TRACE("New state map for {}/{}-{}:", user, function, parallelismId);
+    // for (auto& [key, value] : newStateMap) {
+    //     SPDLOG_TRACE("New state map: {} -> {}", key, value);
+    // }
     // If the parallelismId is changed
     int newParallel = newStateMap.size();
 
@@ -528,11 +528,11 @@ bool FunctionState::rePartitionState(const std::string& newStateHost)
         // Register the new parallelism Id for all the hosts.
         parToHost[std::atoi(tmpParallelismId.c_str())] = tmpHost;
     }
-    // Print the parToHost and hostToPar
-    SPDLOG_TRACE("parToHost for {}/{}-{}:", user, function, parallelismId);
-    for (auto& [parIdx, host] : parToHost) {
-        SPDLOG_TRACE("parToHost: {} -> {}", parIdx, host);
-    }
+    // // Print the parToHost and hostToPar
+    // SPDLOG_TRACE("parToHost for {}/{}-{}:", user, function, parallelismId);
+    // for (auto& [parIdx, host] : parToHost) {
+    //     SPDLOG_TRACE("parToHost: {} -> {}", parIdx, host);
+    // }
     // For the paritioned stateful key, recalculate their master.
     std::map<std::string, std::vector<uint8_t>> parState = getParStateMap();
     // record the partitioned key-value needed transferred to other hosts
@@ -545,14 +545,14 @@ bool FunctionState::rePartitionState(const std::string& newStateHost)
         // Otherwise, transfer it to the new master.
         dataTransfer[parIdx][key] = value;
     }
-    // Print the dataTransfer
-    SPDLOG_TRACE("dataTransfer for {}/{}-{}:", user, function, parallelismId);
-    for (auto& [par, data] : dataTransfer) {
-        SPDLOG_TRACE("dataTransfer: {} ->", par);
-        for (auto& [key, value] : data) {
-            SPDLOG_TRACE("dataTransfer: {} -> {}", key, value.size());
-        }
-    }
+    // // Print the dataTransfer
+    // SPDLOG_TRACE("dataTransfer for {}/{}-{}:", user, function, parallelismId);
+    // for (auto& [par, data] : dataTransfer) {
+    //     SPDLOG_TRACE("dataTransfer: {} ->", par);
+    //     for (auto& [key, value] : data) {
+    //         SPDLOG_TRACE("dataTransfer: {} -> {}", key, value.size());
+    //     }
+    // }
     // transfer data to the new master.
     for (auto& [par, data] : dataTransfer) {
         std::vector<uint8_t> dataTransferVector =
