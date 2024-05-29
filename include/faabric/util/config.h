@@ -49,6 +49,7 @@ class SystemConfig
     // parallelismUpdateInterval unit: ms
     int parallelismUpdateInterval;
     int overWriteSlots;
+    bool streamTestMode;
 
     // Endpoint
     std::string endpointInterface;

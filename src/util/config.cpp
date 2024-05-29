@@ -64,6 +64,7 @@ void SystemConfig::initialise()
     // processed in one worker simultaneously. Thus, we set the value to a
     // large number.
     overWriteSlots = this->getSystemConfIntParam("OVERWRITE_SLOTS", "10000000");
+    streamTestMode = getEnvVar("STREAM_TEST_MODE", "off") == "on";
 
     // Endpoint
     endpointInterface = getEnvVar("ENDPOINT_INTERFACE", "");

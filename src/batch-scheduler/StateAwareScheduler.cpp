@@ -20,15 +20,15 @@ void StateAwareScheduler::funcStateInitializer(
         "stream_function_state_source", "stream_function_parstate_source"
     };
 
-    funcChainedMap["wordcount_source"] = { "wordcount_source",
-                                           "wordcount_split",
-                                           "wordcount_count" };
+    funcChainedMap["stream_wordcount_source"] = { "stream_wordcount_source",
+                                                  "stream_wordcount_split",
+                                                  "stream_wordcount_count" };
 
     // Register the function state
     funcStateRegMap["stream_function_state"] = std::make_tuple("", "");
     funcStateRegMap["stream_function_parstate"] =
       std::make_tuple("partitionInputKey", "partitionStateKey");
-    funcStateRegMap["wordcount_count"] =
+    funcStateRegMap["stream_wordcount_count"] =
       std::make_tuple("partitionInputKey", "partitionStateKey");
 
     // Get the preload Infomation
@@ -361,13 +361,11 @@ int StateAwareScheduler::getParallelismIndex(const std::string& userFunction,
         // get the input KEY.
         std::string inputString = msg.inputdata();
         std::vector<uint8_t> inputVec(inputString.begin(), inputString.end());
-        std::map<std::string, std::vector<uint8_t>> inputData =
-          faabric::util::deserializeParState(inputVec);
-        std::vector<uint8_t> keyData =
-          inputData[statePartitionBy[userFunction]];
-        SPDLOG_TRACE("UserFunction {}'s input data: {}",
-                     userFunction,
-                     std::string(keyData.begin(), keyData.end()));
+        size_t index = 0;
+        std::map<std::string, std::string> inputData =
+          faabric::util::deserializeMap(inputVec, index);
+        std::string keyData = inputData[statePartitionBy[userFunction]];
+        SPDLOG_TRACE("UserFunction {}'s input data: {}", userFunction, keyData);
         // If the HashRing is not initialized, initialize it.
         if (stateHashRing.find(userFunction) == stateHashRing.end()) {
             stateHashRing[userFunction] =
@@ -375,7 +373,8 @@ int StateAwareScheduler::getParallelismIndex(const std::string& userFunction,
                 functionParallelism[userFunction]);
         }
         // Hashing the keyData and set the partition index.
-        int parallelismIdx = stateHashRing[userFunction]->getNode(keyData);
+        std::vector<uint8_t> keyDataVec = faabric::util::stringToBytes(keyData);
+        int parallelismIdx = stateHashRing[userFunction]->getNode(keyDataVec);
         functionCounter[userFunction]++;
         SPDLOG_TRACE(
           "UserFunction {}'s parallelismIdx {}", userFunction, parallelismIdx);
@@ -419,24 +418,38 @@ K getNthKey(const std::map<K, V>& map, std::size_t n)
 }
 
 void StateAwareScheduler::initializeState(HostMap& hostMap,
-                                          std::string userFunc)
+                                          std::string userFunc,
+                                          int parallelism)
 {
-    // Default parallelism is 1.
-    functionParallelism[userFunc] = 1;
-    functionCounter[userFunc] = 0;
-    // The default parallelism Id is 0
-    std::string funcParaId = userFunc + "_0";
-    int hostIdx = rbCounter++ % hostMap.size();
-    std::string host = getNthKey(hostMap, hostIdx);
-    stateHost[funcParaId] = host;
-    // If the State is partitionedState, register it.
-    std::string partitionBy = std::get<0>(funcStateRegMap[userFunc]);
-    std::string stateKey = std::get<1>(funcStateRegMap[userFunc]);
-    if (partitionBy != "" && stateKey != "") {
-        statePartitionBy[userFunc] = partitionBy;
+    if (parallelism == 1) {
+        // Default parallelism is 1.
+        functionParallelism[userFunc] = 1;
+        functionCounter[userFunc] = 0;
+        // The default parallelism Id is 0
+        std::string funcParaId = userFunc + "_0";
+        int hostIdx = rbCounter++ % hostMap.size();
+        std::string host = getNthKey(hostMap, hostIdx);
+        stateHost[funcParaId] = host;
+        // If the State is partitionedState, register it.
+        std::string partitionBy = std::get<0>(funcStateRegMap[userFunc]);
+        std::string stateKey = std::get<1>(funcStateRegMap[userFunc]);
+        if (partitionBy != "" && stateKey != "") {
+            statePartitionBy[userFunc] = partitionBy;
+        }
+        // Register the state to the host.
+        registerStateToHost(funcParaId, host, partitionBy, stateKey);
+    } else {
+        // Otherwise initialize it. (We reset all the related stateinfo now)
+        functionParallelism[userFunc] = 0;
+        functionCounter[userFunc] = 0;
+        std::string partitionBy = std::get<0>(funcStateRegMap[userFunc]);
+        std::string stateKey = std::get<1>(funcStateRegMap[userFunc]);
+        if (partitionBy != "" && stateKey != "") {
+            statePartitionBy[userFunc] = partitionBy;
+        }
+        // Initialize the StateHost and stateHashRing
+        increaseFunctionParallelism(parallelism, userFunc, hostMap);
     }
-    // Register the state to the host.
-    registerStateToHost(funcParaId, host, partitionBy, stateKey);
 }
 
 // The BinPack's scheduler decision algorithm is very simple. It first sorts
@@ -621,20 +634,20 @@ bool StateAwareScheduler::repartitionParitionedState(
   std::string userFunction,
   std::shared_ptr<std::map<std::string, std::string>> oldStateHost)
 {
+    SPDLOG_DEBUG("Repartitioning state for {}", userFunction);
     // Select the new hosts and their parallelismIdx for this function.
-    std::shared_ptr<std::map<std::string, std::string>> newFilteredStateHost;
+    std::map<std::string, std::string> newFilteredStateHost;
     for (const auto& [userFuncParIdx, host] : stateHost) {
         if (userFuncParIdx.find(userFunction + "_") == std::string::npos) {
             continue;
         }
-        newFilteredStateHost->insert({ userFuncParIdx, host });
+        newFilteredStateHost.insert({ userFuncParIdx, host });
     }
     // For all the old State Host, notify the new parallelism.
     std::vector<uint8_t> tmpStateHost =
-      faabric::util::serializeMapBinary(*newFilteredStateHost);
+      faabric::util::serializeMapBinary(newFilteredStateHost);
     std::string newFilteredStateHostStr(tmpStateHost.begin(),
                                         tmpStateHost.end());
-
     for (const auto& [userFuncParIdx, host] : *oldStateHost) {
         // If the userFuncParallelism is not the userFunction, ignore it.
         if (userFuncParIdx.find(userFunction + "_") == std::string::npos) {
@@ -647,9 +660,8 @@ bool StateAwareScheduler::repartitionParitionedState(
           user, function, std::stoi(parallelismId), host);
         cli.rePartitionState(newFilteredStateHostStr);
     }
-
     // Send the new parallelism to state server, along with the new map.
-    for (const auto& [userFuncParIdx, host] : *newFilteredStateHost) {
+    for (const auto& [userFuncParIdx, host] : newFilteredStateHost) {
         // Inform the new parallelism to the old state server.
         auto [user, function, parallelismId] =
           faabric::util::splitUserFuncPar(userFuncParIdx);
@@ -673,11 +685,7 @@ void StateAwareScheduler::preloadParallelism(HostMap& hostMap)
             functionParallelism[ithUserFunction] == ithParallelism) {
             continue;
         }
-        // Otherwise initialize it. (We reset all the related stateinfo now)
-        functionParallelism[ithUserFunction] = 0;
-        functionCounter[ithUserFunction] = 0;
-        // Initialize the StateHost and stateHashRing
-        increaseFunctionParallelism(ithParallelism, ithUserFunction, hostMap);
+        initializeState(hostMap, ithUserFunction, ithParallelism);
     }
 
     preParallelismMap.clear();

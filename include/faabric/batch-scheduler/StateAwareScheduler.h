@@ -46,13 +46,15 @@ class StateAwareScheduler final : public BatchScheduler
       HostMap& hostMap,
       std::map<std::string, faabric::planner::FunctionMetrics> metrics);
 
-    const std::map<std::string, std::string>& getStateHostMap() const {
+    const std::map<std::string, std::string>& getStateHostMap() const
+    {
         return stateHost;
     }
 
-    const std::map<std::string, int>& getFunctionParallelismMap() const {
+    const std::map<std::string, int>& getFunctionParallelismMap() const
+    {
         return functionParallelism;
-    } 
+    }
 
   private:
     bool isFirstDecisionBetter(
@@ -95,7 +97,9 @@ class StateAwareScheduler final : public BatchScheduler
     // Key is User-function : Value is <parititonInputKey, partitionStateKey>
     std::map<std::string, std::tuple<std::string, std::string>> funcStateRegMap;
 
-    void initializeState(HostMap& hostMap, std::string userFunc);
+    void initializeState(HostMap& hostMap,
+                         std::string userFunc,
+                         int parallelism = 1);
 
     void funcStateInitializer(
       std::map<std::string, std::tuple<std::string, std::string>>

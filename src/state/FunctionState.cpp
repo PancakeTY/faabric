@@ -509,58 +509,72 @@ bool FunctionState::rePartitionState(const std::string& newStateHost)
     std::vector<uint8_t> tempStateVec(newStateHost.begin(), newStateHost.end());
     std::map<std::string, std::string> newStateMap =
       faabric::util::deserializeMapBinary(tempStateVec);
+    // Print the newStateMap
+    SPDLOG_TRACE("New state map for {}/{}-{}:", user, function, parallelismId);
+    for (auto& [key, value] : newStateMap) {
+        SPDLOG_TRACE("New state map: {} -> {}", key, value);
+    }
     // If the parallelismId is changed
     int newParallel = newStateMap.size();
-    int newParallelismId = -1;
+
     // Create a new HashRing temporarily to find the new master.
     auto hashRing = faabric::util::ConsistentHashRing(newParallel);
     // need to get the new parallelism Id of this host. (start from 0).
     // need to get the new parallelism Id for all the hosts.
     std::map<int, std::string> parToHost;
-    std::map<std::string, int> hostToPar;
     for (auto& [userFuncParIdx, tmpHost] : newStateMap) {
         auto [tmpUser, tmpFunction, tmpParallelismId] =
           faabric::util::splitUserFuncPar(userFuncParIdx);
         // Register the new parallelism Id for all the hosts.
         parToHost[std::atoi(tmpParallelismId.c_str())] = tmpHost;
-        hostToPar[tmpHost] = std::atoi(tmpParallelismId.c_str());
-        if (tmpHost != hostIp) {
-            continue;
-        }
-        // If the parallelismId is changed, record it.
-        newParallelismId = std::atoi(tmpParallelismId.c_str());
     }
-    // For the paritioned stateful key, reculculate their master.
+    // Print the parToHost and hostToPar
+    SPDLOG_TRACE("parToHost for {}/{}-{}:", user, function, parallelismId);
+    for (auto& [parIdx, host] : parToHost) {
+        SPDLOG_TRACE("parToHost: {} -> {}", parIdx, host);
+    }
+    // For the paritioned stateful key, recalculate their master.
     std::map<std::string, std::vector<uint8_t>> parState = getParStateMap();
     // record the partitioned key-value needed transferred to other hosts
     // and the key-value stored locally.
-    std::map<std::string, std::map<std::string, std::vector<uint8_t>>>
-      dataTransfer;
-    std::map<std::string, std::vector<uint8_t>> newlocalParState;
+    // MAP<PARALLELISM,<KEY,VALUE>(partitioned state)>
+    std::map<int, std::map<std::string, std::vector<uint8_t>>> dataTransfer;
     for (auto& [key, value] : parState) {
         std::vector<uint8_t> keyVector(key.begin(), key.end());
         int parIdx = hashRing.getNode(keyVector);
         // Otherwise, transfer it to the new master.
-        dataTransfer[parToHost[parIdx]][key] = value;
+        dataTransfer[parIdx][key] = value;
+    }
+    // Print the dataTransfer
+    SPDLOG_TRACE("dataTransfer for {}/{}-{}:", user, function, parallelismId);
+    for (auto& [par, data] : dataTransfer) {
+        SPDLOG_TRACE("dataTransfer: {} ->", par);
+        for (auto& [key, value] : data) {
+            SPDLOG_TRACE("dataTransfer: {} -> {}", key, value.size());
+        }
     }
     // transfer data to the new master.
-    for (auto& [host, data] : dataTransfer) {
+    for (auto& [par, data] : dataTransfer) {
         std::vector<uint8_t> dataTransferVector =
           faabric::util::serializeParState(data);
-        if (host == hostIp) {
+        std::string hostDes = parToHost[par];
+        if (hostDes == hostIp && par == parallelismId) {
             tempParState.emplace(std::move(dataTransferVector));
             continue;
         }
-        FunctionStateClient stateClient(user, function, hostToPar[host], host);
+        if (hostDes == hostIp && par != parallelismId) {
+            // TODO - for the same host, we can simplify it.
+            FunctionStateClient stateClient(user, function, par, hostDes);
+            stateClient.addPartitionState(partitionKey, dataTransferVector);
+            continue;
+        }
+        FunctionStateClient stateClient(user, function, par, hostDes);
         stateClient.addPartitionState(partitionKey, dataTransferVector);
     }
-    // If the parallelism Id is changed, or the this partitioned part is
-    // removed.
-    if (newParallelismId == -1) {
+    // If the parallelism Id is changed, remove this partitioned state.
+    if (parToHost[parallelismId] != hostIp) {
         return false;
     }
-    // the redis-state will be register later.
-    parallelismId = newParallelismId;
     return true;
 }
 

@@ -26,6 +26,7 @@ TEST_ENV = {
         ]
     ),
     "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1",
+    "STREAM_TEST_MODE" : "on",
 }
 
 # If executing in CI, give us some extra CPU cores to run the tests

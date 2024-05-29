@@ -1,8 +1,8 @@
 #include <faabric/util/serialization.h>
 
+#include <cstring> // For memcpy
 #include <functional>
-#include <cstring>  // For memcpy
-#include <iomanip>  // For std::setw and std::setfill
+#include <iomanip> // For std::setw and std::setfill
 
 // THERE MUST BE SAME AS CPP LIMFAASM UTIL SERIALIZATION
 namespace faabric::util {
@@ -13,15 +13,60 @@ inline void hashCombine(std::size_t& seed, std::size_t value)
     seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
+std::size_t murmurhash(const uint8_t* key, std::size_t len, uint32_t seed)
+{
+    const uint32_t c1 = 0xcc9e2d51;
+    const uint32_t c2 = 0x1b873593;
+    const uint32_t r1 = 15;
+    const uint32_t r2 = 13;
+    const uint32_t m = 5;
+    const uint32_t n = 0xe6546b64;
+
+    uint32_t hash = seed;
+
+    const int nblocks = len / 4;
+    const uint32_t* blocks = (const uint32_t*)(key);
+    for (int i = 0; i < nblocks; i++) {
+        uint32_t k = blocks[i];
+        k *= c1;
+        k = (k << r1) | (k >> (32 - r1));
+        k *= c2;
+
+        hash ^= k;
+        hash = (hash << r2) | (hash >> (32 - r2));
+        hash = hash * m + n;
+    }
+
+    const uint8_t* tail = (const uint8_t*)(key + nblocks * 4);
+    uint32_t k1 = 0;
+
+    switch (len & 3) {
+        case 3:
+            k1 ^= tail[2] << 16;
+        case 2:
+            k1 ^= tail[1] << 8;
+        case 1:
+            k1 ^= tail[0];
+            k1 *= c1;
+            k1 = (k1 << r1) | (k1 >> (32 - r1));
+            k1 *= c2;
+            hash ^= k1;
+    };
+
+    hash ^= len;
+    hash ^= (hash >> 16);
+    hash *= 0x85ebca6b;
+    hash ^= (hash >> 13);
+    hash *= 0xc2b2ae35;
+    hash ^= (hash >> 16);
+
+    return hash;
+}
+
 // Function definition
 std::size_t hashVector(const std::vector<uint8_t>& vec)
 {
-    std::size_t hashValue = 0;
-    for (uint8_t byte : vec) {
-        std::size_t elementHash = std::hash<uint8_t>{}(byte);
-        hashCombine(hashValue, elementHash);
-    }
-    return hashValue;
+    return murmurhash(vec.data(), vec.size(), 0);
 }
 
 // Transforms a uint8_t vector of bytes into a uint32_t
@@ -258,7 +303,7 @@ std::map<std::string, std::string> deserializeMap(
 {
     // Handle empty buffer or index out of range
     if (buffer.size() < index + 4) {
-        return {};  // Return an empty map if there's not enough data
+        return {}; // Return an empty map if there's not enough data
     }
 
     uint32_t numPairs = *reinterpret_cast<const uint32_t*>(&buffer[index]);
@@ -267,7 +312,8 @@ std::map<std::string, std::string> deserializeMap(
 
     for (uint32_t i = 0; i < numPairs; ++i) {
         if (buffer.size() < index + 1) {
-            throw std::runtime_error("Buffer too small for expected number of pairs");
+            throw std::runtime_error(
+              "Buffer too small for expected number of pairs");
         }
         std::string key = deserializeString(buffer, index);
         std::string value = deserializeString(buffer, index);
@@ -281,7 +327,8 @@ void serializeNestedMap(
   std::vector<uint8_t>& buffer,
   const std::map<std::string, std::map<std::string, std::string>>& nestedMap)
 {
-    appendUint32(buffer, static_cast<uint32_t>(nestedMap.size())); // Number of outer pairs
+    appendUint32(
+      buffer, static_cast<uint32_t>(nestedMap.size())); // Number of outer pairs
     for (const auto& pair : nestedMap) {
         serializeString(buffer, pair.first); // Serialize outer key
         serializeMap(buffer, pair.second);   // Serialize inner map
@@ -294,7 +341,7 @@ std::map<std::string, std::map<std::string, std::string>> deserializeNestedMap(
   size_t& index)
 {
     if (buffer.size() < index + 4) {
-        return {};  // Return an empty nested map if there's not enough data
+        return {}; // Return an empty nested map if there's not enough data
     }
 
     uint32_t numPairs = *reinterpret_cast<const uint32_t*>(&buffer[index]);
@@ -303,10 +350,12 @@ std::map<std::string, std::map<std::string, std::string>> deserializeNestedMap(
 
     for (uint32_t i = 0; i < numPairs; ++i) {
         if (buffer.size() < index + 1) {
-            throw std::runtime_error("Buffer too small for expected number of outer pairs");
+            throw std::runtime_error(
+              "Buffer too small for expected number of outer pairs");
         }
         std::string key = deserializeString(buffer, index);
-        std::map<std::string, std::string> valueMap = deserializeMap(buffer, index);
+        std::map<std::string, std::string> valueMap =
+          deserializeMap(buffer, index);
         nestedMap[std::move(key)] = std::move(valueMap);
     }
     return nestedMap;

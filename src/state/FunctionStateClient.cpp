@@ -71,7 +71,10 @@ void FunctionStateClient::unlock()
 bool FunctionStateClient::createState(std::string stateKey)
 {
     logRequest("functionstate-create");
-
+    if (faabric::util::getSystemConfig().streamTestMode) {
+        SPDLOG_DEBUG("STREAM TEST MODE skipped createState");
+        return true;
+    }
     faabric::FunctionStateTransferRequest request;
     request.set_user(user);
     request.set_func(func);
@@ -144,6 +147,10 @@ void FunctionStateClient::pushChunks(const std::vector<StateChunk>& chunks,
 
 void FunctionStateClient::rePartitionState(const std::string& newStateHost)
 {
+    if (faabric::util::getSystemConfig().streamTestMode) {
+        SPDLOG_DEBUG("STREAM TEST MODE skipped rePartitionState");
+        return;
+    }
     logRequest("functionstate-repartition-state");
     faabric::FunctionStateRepartition request;
     request.set_user(user);
@@ -158,8 +165,10 @@ void FunctionStateClient::addPartitionState(const std::string& pstatekey,
                                             const std::vector<uint8_t>& data)
 {
 
-    // stateChunk.set_data(chunk.data, chunk.length);
-
+    if (faabric::util::getSystemConfig().streamTestMode) {
+        SPDLOG_DEBUG("STREAM TEST MODE skipped addPartitionState");
+        return;
+    }
     logRequest("functionstate-addpartition-state");
     faabric::FunctionStateAdd request;
     request.set_user(user);

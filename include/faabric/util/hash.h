@@ -18,28 +18,15 @@ class ConsistentHashRing
     int numVirtualNodes; // Number of virtual nodes per physical node
 
   public:
-    ConsistentHashRing(int nodes = 0, int virtualNodes = 10)
-      : numNodes(nodes)
+    ConsistentHashRing(int nodes = 0, int virtualNodes = 50)
+      : numNodes(0)
       , numVirtualNodes(virtualNodes)
     {
-        initializeNodes();
-    }
-
-    void initializeNodes()
-    {
-        for (int i = 0; i < numNodes; ++i) {
-            addNode(i); // Use addNode to maintain logic consistency
-        }
+        addNodes(nodes);
     }
 
     void addNode(int nodeID)
     {
-        if (nodeID != numNodes) {
-            std::cerr << "Error: Node ID must be the next sequential integer. "
-                         "Expected Node ID: "
-                      << numNodes << std::endl;
-            return;
-        }
         for (int v = 0; v < numVirtualNodes; ++v) {
             std::string virtualNodeKey =
               "Node" + std::to_string(nodeID) + "Virtual" + std::to_string(v);
@@ -47,8 +34,8 @@ class ConsistentHashRing
                                           virtualNodeKey.end());
             std::size_t hash = faabric::util::hashVector(keyBytes);
             ring[hash] = nodeID;
-            std::cout << "Added Virtual Node " << virtualNodeKey
-                      << " with hash " << hash << std::endl;
+            // std::cout << "Added Virtual Node " << virtualNodeKey
+            //           << " with hash " << hash << std::endl;
         }
         numNodes++;
     }
@@ -63,21 +50,30 @@ class ConsistentHashRing
     void removeNode(int nodeID)
     {
         auto it = ring.begin();
+        bool found = false;
         while (it != ring.end()) {
             if (it->second == nodeID) {
                 auto toErase = it++;
                 ring.erase(toErase);
+                found = true;
             } else {
                 ++it;
             }
         }
-        std::cout << "Removed Node " << nodeID << std::endl;
-        numNodes--;
+        if (found) {
+            std::cout << "Removed Node " << nodeID << std::endl;
+            numNodes--;
+        } else {
+            std::cerr << "Error: Node ID " << nodeID << " not found."
+                      << std::endl;
+        }
     }
 
     int getNode(const std::vector<uint8_t>& keyBytes)
     {
-        std::size_t hash = hashVector(keyBytes);
+        std::size_t hash = faabric::util::hashVector(keyBytes);
+        // Print hash
+        std::cout << "Hash: " << hash << std::endl;
         auto it = ring.lower_bound(hash);
         if (it == ring.end()) {
             it = ring.begin();
