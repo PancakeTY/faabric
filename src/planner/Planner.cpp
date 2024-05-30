@@ -80,7 +80,7 @@ Planner::Planner()
     config.set_hosttimeout(std::stoi(
       faabric::util::getEnvVar("PLANNER_HOST_KEEPALIVE_TIMEOUT", "5")));
     config.set_numthreadshttpserver(
-      std::stoi(faabric::util::getEnvVar("PLANNER_HTTP_SERVER_THREADS", "4")));
+      std::stoi(faabric::util::getEnvVar("PLANNER_HTTP_SERVER_THREADS", "10")));
 
     printConfig();
 
@@ -538,6 +538,13 @@ std::shared_ptr<faabric::BatchExecuteRequestStatus> Planner::getBatchResults(
 
         // Set the finished condition
         berStatus->set_finished(!state.inFlightReqs.contains(appId));
+
+        // WARNING: It might affect the get message result function and the
+        // ExecGraph function. But in stream processing, it is not a problem.
+        // Clean the queried results.
+        if (berStatus->finished()) {
+            state.appResults.erase(appId);
+        }
     }
 
     return berStatus;
@@ -758,7 +765,9 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
             }
 
             // 3. We send the mappings to all the hosts involved
-            broker.setAndSendMappingsFromSchedulingDecision(*decision);
+            if (!streamMode) {
+                broker.setAndSendMappingsFromSchedulingDecision(*decision);
+            }
 
             break;
         }
@@ -812,7 +821,9 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
             // 3. We want to send the mappings for the _updated_ decision,
             // including _all_ the messages (not just the ones that are being
             // added)
-            broker.setAndSendMappingsFromSchedulingDecision(*oldDec);
+            if (!streamMode) {
+                broker.setAndSendMappingsFromSchedulingDecision(*oldDec);
+            }
 
             break;
         }
@@ -867,8 +878,11 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
 
             // 3. We want to sent the new scheduling decision to all the hosts
             // involved in the migration (even the ones that are evicted)
-            broker.setAndSendMappingsFromSchedulingDecision(*decision);
-            broker.sendMappingsFromSchedulingDecision(*decision, evictedHosts);
+            if (!streamMode) {
+                broker.setAndSendMappingsFromSchedulingDecision(*decision);
+                broker.sendMappingsFromSchedulingDecision(*decision,
+                                                          evictedHosts);
+            }
 
             break;
         }

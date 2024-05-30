@@ -38,6 +38,7 @@ class SystemConfig
     int defaultMpiWorldSize;
 
     // STREAM
+    bool streamMode;
     std::string batchProcess;
     int batchSize;
     // batchInterval unit: ms

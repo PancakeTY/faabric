@@ -48,6 +48,7 @@ void SystemConfig::initialise()
       this->getSystemConfIntParam("DEFAULT_MPI_WORLD_SIZE", "5");
 
     // STREAM
+    streamMode = getEnvVar("STREAM_MODE", "on") == "on";
     batchProcess = getEnvVar("BATCH_PROCESS", "on");
     batchSize = this->getSystemConfIntParam("BATCH_SIZE", "10");
     batchInterval = this->getSystemConfIntParam("BATCH_INTERVAL", "100");

@@ -59,9 +59,8 @@ class Planner
 
     // Setters/getters for individual message results
 
-    void setMessageResult(
-      std::shared_ptr<faabric::Message> msg,
-      bool locked = false);
+    void setMessageResult(std::shared_ptr<faabric::Message> msg,
+                          bool locked = false);
 
     void setMessageResultBatch(
       std::shared_ptr<faabric::BatchExecuteRequest> batchMsg);
@@ -117,6 +116,7 @@ class Planner
     PlannerState state;
     PlannerConfig config;
 
+    bool streamMode = faabric::util::getSystemConfig().streamMode;
     long lastParallelismUpdate;
     int parallelismUpdateInterval;
     bool isPreloadParallelism;
