@@ -235,14 +235,16 @@ void PlannerEndpointHandler::onRequest(
             }
 
             // Execute the BER
-            auto decision = getPlanner().callBatch(ber);
+            // auto decision = getPlanner().callBatch(ber);
+            getPlanner().enqueueCallBatch(ber);
 
             // Handle cases where the scheduling failed
-            if (*decision == NOT_ENOUGH_SLOTS_DECISION) {
-                response.result(beast::http::status::internal_server_error);
-                response.body() = "No available hosts";
-                return ctx.sendFunction(std::move(response));
-            }
+            // In Stream Processing, slots are always enough.
+            // if (*decision == NOT_ENOUGH_SLOTS_DECISION) {
+            //     response.result(beast::http::status::internal_server_error);
+            //     response.body() = "No available hosts";
+            //     return ctx.sendFunction(std::move(response));
+            // }
 
             // Prepare the response
             response.result(beast::http::status::ok);

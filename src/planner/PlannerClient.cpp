@@ -297,6 +297,43 @@ PlannerClient::getBatchResults(
     return std::make_shared<BatchExecuteRequestStatus>(berStatus);
 }
 
+void PlannerClient::enqueueFunctions(
+  std::shared_ptr<faabric::BatchExecuteRequest> req)
+{
+    const std::string funcStr =
+      faabric::util::funcToString(req->messages(0), false);
+    auto& reg = faabric::snapshot::getSnapshotRegistry();
+
+    std::string snapshotKey;
+    if (!req->singlehosthint()) {
+        snapshotKey = req->messages(0).snapshotkey();
+    }
+
+    if (!snapshotKey.empty()) {
+        faabric::util::UniqueLock lock(plannerCacheMx);
+        auto snap = reg.getSnapshot(snapshotKey);
+
+        // See if we've already pushed this snapshot to the planner once,
+        // if so, just push the diffs that have occurred in this main thread
+        if (cache.pushedSnapshots.contains(snapshotKey)) {
+            std::vector<faabric::util::SnapshotDiff> snapshotDiffs =
+              snap->getTrackedChanges();
+
+            snapshotClient->pushSnapshotUpdate(
+              snapshotKey, snap, snapshotDiffs);
+        } else {
+            snapshotClient->pushSnapshot(snapshotKey, snap);
+            cache.pushedSnapshots.insert(snapshotKey);
+        }
+
+        // Now reset the tracking on the snapshot before we start executing
+        snap->clearTrackedChanges();
+    }
+
+    faabric::EmptyResponse response;
+    syncSend(PlannerCalls::EnqueueBatch, req.get(), &response);
+}
+
 faabric::batch_scheduler::SchedulingDecision PlannerClient::callFunctions(
   std::shared_ptr<faabric::BatchExecuteRequest> req)
 {

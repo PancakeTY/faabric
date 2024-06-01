@@ -89,6 +89,17 @@ Planner::Planner()
     parallelismUpdateInterval =
       faabric::util::getSystemConfig().parallelismUpdateInterval;
     isPreloadParallelism = faabric::util::getSystemConfig().preloadParallelism;
+
+    batchTimerThread = std::thread(&Planner::batchTimerCheck, this);
+}
+
+Planner::~Planner()
+{
+    // Stop the batch timer thread
+    stopBatchTimer = true;
+    if (batchTimerThread.joinable()) {
+        batchTimerThread.join();
+    }
 }
 
 PlannerConfig Planner::getConfig()
@@ -403,14 +414,108 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg,
     }
 }
 
+void Planner::setMessageResultWitoutLock(std::shared_ptr<faabric::Message> msg)
+{
+    int appId = msg->appid();
+    int msgId = msg->id();
+
+    faabric::util::FullLock lock(plannerMx);
+
+    SPDLOG_TRACE("Planner setting message result (id: {}) for {}:{}:{}",
+                 msg->id(),
+                 msg->appid(),
+                 msg->groupid(),
+                 msg->groupidx());
+
+    // Release the slot only once
+    assert(state.hostMap.contains(msg->executedhost()));
+
+    // Set the result
+    state.appResults[appId][msgId] = msg;
+
+    if (!state.inFlightReqs.contains(appId)) {
+        // We don't want to error if any client uses `setMessageResult`
+        // liberally. This means that it may happen that when we set a message
+        // result a second time, the app is already not in-flight
+        SPDLOG_DEBUG("Setting result for non-existant (or finished) app: {}",
+                     appId);
+    } else {
+        auto req = state.inFlightReqs.at(appId).first;
+        auto decision = state.inFlightReqs.at(appId).second;
+
+        // Work out the message position in the BER
+        auto it = std::find_if(
+          req->messages().begin(), req->messages().end(), [&](auto innerMsg) {
+              return innerMsg.id() == msg->id();
+          });
+        if (it == req->messages().end()) {
+            // Ditto as before. We want to allow setting the message result
+            // more than once without breaking
+            SPDLOG_DEBUG(
+              "Setting result for non-existant (or finished) message: {}",
+              appId);
+        } else {
+            SPDLOG_TRACE("Removing message {} from app {}", msg->id(), appId);
+
+            // Remove message from in-flight requests
+            req->mutable_messages()->erase(it);
+
+            // Remove message from decision
+            decision->removeMessage(msg->id());
+
+            // Record the Metrics
+            std::string userFunc = msg->user() + "_" + msg->function();
+            int parallelismId = msg->parallelismid();
+            std::string userFuncPar =
+              userFunc + "_" + std::to_string(parallelismId);
+            if (state.funcLatencyStats.find(userFuncPar) !=
+                state.funcLatencyStats.end()) {
+                // Record the Lock metrics here
+                int waitingTime = msg->queueendtime() - msg->queuestarttime();
+                state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
+                  msgId, waitingTime);
+                // Print the metrics Only for debug now.
+                // state.funcLatencyStats[userFuncPar]->print();
+            }
+
+            // Record the Chain metrics
+            int chainedId = msg->chainedid();
+            state.chainedInflights[chainedId]--;
+            if (state.chainedInflights[chainedId] == 0) {
+                // req is the first message in the chain
+                userFunc = req->user() + "_" + req->function();
+                if (state.chainFuncLatencyStats.find(userFunc) !=
+                    state.chainFuncLatencyStats.end()) {
+                    state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
+                      chainedId);
+                    // state.chainFuncLatencyStats[userFunc]->print();
+                }
+                state.chainedInflights.erase(chainedId);
+            }
+
+            // Remove pair altogether if no more messages left
+            if (req->messages_size() == 0) {
+                state.inFlightReqs.erase(appId);
+            }
+        }
+    }
+    // Finally, dispatch an async message to all hosts that are waiting once
+    // all planner accounting is updated
+    if (state.appResultWaiters.find(msgId) != state.appResultWaiters.end()) {
+        for (const auto& host : state.appResultWaiters[msgId]) {
+            SPDLOG_DEBUG("Sending result to waiting host: {}", host);
+            faabric::scheduler::getFunctionCallClient(host)->setMessageResult(
+              msg);
+        }
+    }
+}
+
 void Planner::setMessageResultBatch(
   std::shared_ptr<faabric::BatchExecuteRequest> batchMsg)
 {
-    faabric::util::FullLock lock(plannerMx);
-
     for (int msgIdx = 0; msgIdx < batchMsg->messages_size(); msgIdx++) {
         auto msg = batchMsg->messages(msgIdx);
-        setMessageResult(std::make_shared<faabric::Message>(msg), true);
+        setMessageResultWitoutLock(std::make_shared<faabric::Message>(msg));
     }
 }
 
@@ -597,6 +702,186 @@ static faabric::batch_scheduler::HostMap convertToBatchSchedHostMap(
     }
 
     return hostMap;
+}
+
+void Planner::enqueueCallBatch(std::shared_ptr<BatchExecuteRequest> req,
+                               bool isChained)
+{
+    int appId = req->appid();
+
+    if (isChained) {
+        faabric::util::FullLock lock(plannerMx);
+
+        // If the message is chained, we need to record it to the state inflight
+        // and chained count at first. Otherwise, the caller function might
+        // finish before this function is recorded. In this case, the set batch
+        // result might mark this chained functions are finished.
+        auto oldReq = state.inFlightReqs.at(appId).first;
+        auto oldDec = state.inFlightReqs.at(appId).second;
+
+        for (size_t i = 0; i < req->messages_size(); i++) {
+            *oldReq->add_messages() = req->messages(i);
+            oldDec->addMessage("enqueue_not_set", req->messages(i));
+
+            faabric::Message tempMessage = req->messages(i);
+            int chainedid = tempMessage.chainedid();
+            state.chainedInflights[chainedid]++;
+        }
+    }
+    return batchExecuteReqQueue.enqueue(req);
+}
+
+void Planner::batchTimerCheck()
+{
+    while (!stopBatchTimer) {
+        // If empty, this thread will be blocked.
+        std::shared_ptr<BatchExecuteRequest> req =
+          batchExecuteReqQueue.dequeue();
+        callBatchWithoutLock(req);
+    }
+}
+
+void Planner::callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req)
+{
+    int appId = req->appid();
+
+    faabric::util::FullLock lock(plannerMx);
+
+    auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
+    auto decisionType =
+      batchScheduler->getDecisionType(state.inFlightReqs, req);
+
+    // For the NEW messages, we assgin a chainedId for it if it is not set.
+    // The chainId is used to trace the chain function.
+    bool isNew = decisionType == faabric::batch_scheduler::DecisionType::NEW;
+    if (isNew) {
+        // Assign chainedId for the new messages
+        for (int i = 0; i < req->messages_size(); i++) {
+            // Assign chainedId for the new messages
+            faabric::Message* tempMessage = req->mutable_messages(i);
+            int chainedId = ++chainedIdCounter;
+            tempMessage->set_chainedid(chainedId);
+            SPDLOG_TRACE("Assign chained id {} for message {}",
+                         chainedId,
+                         tempMessage->id());
+        }
+    }
+
+    std::shared_ptr<batch_scheduler::StateAwareScheduler> stateAwareScheduler =
+      std::dynamic_pointer_cast<batch_scheduler::StateAwareScheduler>(
+        batchScheduler);
+
+    if (!stateAwareScheduler) {
+        throw std::runtime_error(
+          "enqueue call batch is only supported by state aware scheduler");
+    }
+
+    // In stream processing, only the NEW and SCALE_CHANGE are supported.
+    if (decisionType == faabric::batch_scheduler::DecisionType::DIST_CHANGE) {
+        throw std::runtime_error(
+          "Dist change is not supported in the stream mode");
+    }
+
+    auto hostMapCopy = convertToBatchSchedHostMap(state.hostMap);
+
+    std::shared_ptr<batch_scheduler::SchedulingDecision> decision = nullptr;
+
+    // TODO - This function should be removed. The default parallelism of each
+    // function state is 1 and adjusted by the state-aware scheduler or
+    // faasmctl.
+    if (isPreloadParallelism) {
+        stateAwareScheduler->preloadParallelism(hostMapCopy);
+    } else {
+        // TODO - adjust parallelism according to metrics
+    }
+
+    decision = stateAwareScheduler->scheduleWithoutLock(
+      hostMapCopy, state.inFlightReqs, req);
+
+    assert(decision != nullptr);
+    switch (decisionType) {
+        case faabric::batch_scheduler::DecisionType::NEW: {
+
+            // 1. For a new decision, we just add it to the in-flight map
+            state.inFlightReqs[appId] = std::make_pair(req, decision);
+            // 2 For a new decision, we record its metrics
+            // Metrics include chained metrics and function metrics (BOTH
+            // message level)
+            for (size_t i = 0; i < req->messages_size(); i++) {
+                faabric::Message tempMessage = req->messages(i);
+                int tempParallelisimId = tempMessage.parallelismid();
+                int msgId = tempMessage.id();
+                int chainedId = tempMessage.chainedid();
+                std::string userFunc =
+                  tempMessage.user() + "_" + tempMessage.function();
+                std::string userFuncPar =
+                  userFunc + "_" + std::to_string(tempParallelisimId);
+
+                if (state.chainFuncLatencyStats.find(userFunc) ==
+                    state.chainFuncLatencyStats.end()) {
+                    // The chain function name does not exist in the map, so
+                    // we need to create a new Metrics object
+                    std::shared_ptr<FunctionLatency> newMetrics =
+                      std::make_shared<FunctionLatency>(userFunc);
+
+                    // Finally, add the newMetrics object to the map
+                    state.chainFuncLatencyStats[userFunc] =
+                      std::move(newMetrics);
+                }
+                // For the NEW messages, reset the in-flight requests
+                state.chainedInflights[chainedId] = 1;
+                state.chainFuncLatencyStats[userFunc]->addInFlightReq(
+                  chainedId);
+
+                if (state.funcLatencyStats.find(userFuncPar) ==
+                    state.funcLatencyStats.end()) {
+                    // The function name does not exist in the map, so we
+                    // need to create a new Metrics object
+                    std::shared_ptr<FunctionLatency> newMetrics =
+                      std::make_shared<FunctionLatency>(userFuncPar);
+                    state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
+                }
+                state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
+            }
+            break;
+        }
+        case faabric::batch_scheduler::DecisionType::SCALE_CHANGE: {
+            // 1. TODO - Up date the enqueue_not_set deceision
+
+            // 2. Record the metrics for each function.
+            for (size_t i = 0; i < req->messages_size(); i++) {
+                faabric::Message tempMessage = req->messages(i);
+                std::string userFunc =
+                  tempMessage.user() + "_" + tempMessage.function();
+                int tempParallelisimId = tempMessage.parallelismid();
+                int msgId = tempMessage.id();
+                std::string userFuncPar =
+                  userFunc + "_" + std::to_string(tempParallelisimId);
+
+                if (state.funcLatencyStats.find(userFuncPar) ==
+                    state.funcLatencyStats.end()) {
+                    // The function name does not exist in the map, so we
+                    // need to create a new Metrics object
+                    std::shared_ptr<FunctionLatency> newMetrics =
+                      std::make_shared<FunctionLatency>(userFuncPar);
+                    state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
+                }
+                state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
+            }
+            break;
+        }
+        default: {
+            SPDLOG_ERROR("Unrecognised decision type: {} (app: {})",
+                         decisionType,
+                         req->appid());
+            throw std::runtime_error("Unrecognised decision type");
+        }
+    }
+    // Sanity-checks before actually dispatching functions for execution
+    assert(req->messages_size() == decision->hosts.size());
+    assert(req->appid() == decision->appId);
+
+    dispatchSchedulingDecision(req, decision);
 }
 
 std::shared_ptr<faabric::batch_scheduler::SchedulingDecision>

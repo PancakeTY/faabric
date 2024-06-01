@@ -74,6 +74,9 @@ std::unique_ptr<google::protobuf::Message> PlannerServer::doSyncRecv(
         case PlannerCalls::CallBatch: {
             return recvCallBatch(message.udata());
         }
+        case PlannerCalls::EnqueueBatch: {
+            return recvEnqueueBatch(message.udata());
+        }
         default: {
             // If we don't recognise the header, let the client fail, but don't
             // crash the planner
@@ -256,6 +259,19 @@ std::unique_ptr<google::protobuf::Message> PlannerServer::recvCallBatch(
     }
 
     return std::make_unique<faabric::PointToPointMappings>(mappings);
+}
+
+std::unique_ptr<google::protobuf::Message> PlannerServer::recvEnqueueBatch(
+  std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(BatchExecuteRequest, buffer.data(), buffer.size());
+    auto req = std::make_shared<faabric::BatchExecuteRequest>(parsedMsg);
+
+    // This request will only be called by chained call. Mark it.
+    planner.enqueueCallBatch(req, true);
+
+    faabric::EmptyResponse resp;
+    return std::make_unique<faabric::EmptyResponse>();
 }
 
 }

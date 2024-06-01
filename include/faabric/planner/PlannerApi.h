@@ -19,5 +19,6 @@ enum PlannerCalls
     CallBatch = 13,
     PreloadSchedulingDecision = 14,
     SetMessageResultBatch = 15,
+    EnqueueBatch = 16,
 };
 }

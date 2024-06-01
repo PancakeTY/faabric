@@ -452,6 +452,69 @@ void StateAwareScheduler::initializeState(HostMap& hostMap,
     }
 }
 
+std::shared_ptr<SchedulingDecision> StateAwareScheduler::scheduleWithoutLock(
+  HostMap& hostMap,
+  const InFlightReqs& inFlightReqs,
+  std::shared_ptr<BatchExecuteRequest> req)
+{
+    auto decision = std::make_shared<SchedulingDecision>(req->appid(), 0);
+    // Round-Robin scheduling
+    for (int msgIdx = 0; msgIdx < req->messages_size(); msgIdx++) {
+        bool roundRobinFlag = true;
+        std::string host = "unknown";
+
+        std::string userFunc =
+          req->messages(msgIdx).user() + "_" + req->messages(msgIdx).function();
+        // It it is a function-state function, we might need to assign it near
+        // the state.
+        if (funcStateRegMap.contains(userFunc)) {
+            // If function-state has not been initialized, initialize it.
+            if (!functionParallelism.contains(userFunc)) {
+                initializeState(hostMap, userFunc);
+            }
+            // TODO - get parallelism is not thread safe now
+            int parallelismId =
+              getParallelismIndex(userFunc, req->messages(msgIdx));
+            // Register the parallelismIdx to it. It is safe to register there.
+            // Even if the Scheduling failed this time, the next scheduling will
+            // overwrite it.
+            req->mutable_messages(msgIdx)->set_parallelismid(parallelismId);
+            std::string userFuncPar =
+              userFunc + "_" + std::to_string(parallelismId);
+
+            bool unavailableFlag = false;
+            // If stateHost doesn't contains the userFuncPar, use round-robin.
+            if (stateHost.find(userFuncPar) == stateHost.end()) {
+                unavailableFlag = true;
+            }
+            // If host is not available, use round-robin.
+            host = stateHost[userFuncPar];
+            if (hostMap.find(host) == hostMap.end()) {
+                SPDLOG_WARN("Host {} is not disconnected, but the state in "
+                            "stored in here",
+                            host);
+                unavailableFlag = true;
+            }
+            if (!unavailableFlag) {
+                roundRobinFlag = false;
+            }
+        }
+        // Allocate the request by using round robin.
+        if (roundRobinFlag) {
+            int hostIdx =
+              atomicRbCounter.fetch_add(1, std::memory_order_relaxed) %
+              hostMap.size();
+            host = getNthKey(hostMap, hostIdx);
+        }
+        if (host == "unknown") {
+            throw std::runtime_error("Host is unknown");
+        }
+        decision->addMessage(host, req->messages(msgIdx));
+    }
+
+    return decision;
+}
+
 // The BinPack's scheduler decision algorithm is very simple. It first sorts
 // hosts (i.e. bins) in a specific order (depending on the scheduling type),
 // and then starts filling bins from begining to end, until it runs out of

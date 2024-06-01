@@ -30,4 +30,5 @@ faabric_lib(util
     testing.cpp
     serialization.cpp
     hash.cpp
+    map.cpp
 )

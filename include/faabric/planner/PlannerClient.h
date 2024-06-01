@@ -90,6 +90,8 @@ class PlannerClient final : public faabric::transport::MessageEndpointClient
     std::shared_ptr<faabric::BatchExecuteRequestStatus> getBatchResults(
       std::shared_ptr<faabric::BatchExecuteRequest> req);
 
+    void enqueueFunctions(std::shared_ptr<faabric::BatchExecuteRequest> req);
+
     faabric::batch_scheduler::SchedulingDecision callFunctions(
       std::shared_ptr<faabric::BatchExecuteRequest> req);
 
@@ -104,7 +106,6 @@ class PlannerClient final : public faabric::transport::MessageEndpointClient
     // ------
     // Function State calls
     // ------
-
 
   private:
     std::mutex plannerCacheMx;

@@ -28,6 +28,11 @@ class StateAwareScheduler final : public BatchScheduler
       const InFlightReqs& inFlightReqs,
       std::shared_ptr<faabric::BatchExecuteRequest> req) override;
 
+    std::shared_ptr<SchedulingDecision> scheduleWithoutLock(
+      HostMap& hostMap,
+      const InFlightReqs& inFlightReqs,
+      std::shared_ptr<faabric::BatchExecuteRequest> req);
+
     // the following functions are public only for tests.
     std::shared_ptr<std::map<std::string, std::string>>
     increaseFunctionParallelism(int numIncrease,
@@ -69,6 +74,7 @@ class StateAwareScheduler final : public BatchScheduler
 
     // The counter used for round robin scheduling.
     int rbCounter = 0;
+    std::atomic<unsigned int> atomicRbCounter{ 0 };
 
     /***
      * The following maps are used to store the state of the functions.

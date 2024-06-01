@@ -6,6 +6,7 @@
 #include <faabric/planner/planner.pb.h>
 #include <faabric/proto/faabric.pb.h>
 #include <faabric/snapshot/SnapshotRegistry.h>
+#include <faabric/util/queue.h>
 
 #include <shared_mutex>
 
@@ -25,6 +26,8 @@ class Planner
 {
   public:
     Planner();
+
+    ~Planner();
 
     // ----------
     // Planner config
@@ -62,6 +65,8 @@ class Planner
     void setMessageResult(std::shared_ptr<faabric::Message> msg,
                           bool locked = false);
 
+    void setMessageResultWitoutLock(std::shared_ptr<faabric::Message> msg);
+
     void setMessageResultBatch(
       std::shared_ptr<faabric::BatchExecuteRequest> batchMsg);
 
@@ -94,6 +99,11 @@ class Planner
     std::shared_ptr<faabric::batch_scheduler::SchedulingDecision> callBatch(
       std::shared_ptr<BatchExecuteRequest> req);
 
+    void callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req);
+
+    void enqueueCallBatch(std::shared_ptr<BatchExecuteRequest> req,
+                          bool isChained = false);
+
     // ----------
     // Function State public API
     // ----------
@@ -116,12 +126,24 @@ class Planner
     PlannerState state;
     PlannerConfig config;
 
+    faabric::util::ThreadSafeQueue<
+      std::shared_ptr<faabric::BatchExecuteRequest>>
+      batchExecuteReqQueue;
+
+    // Check the waiting queue peroiodically.
+    void batchTimerCheck();
+
+    // ---- Batch Execution ----
+    std::thread batchTimerThread;
+    bool stopBatchTimer = false;
+
     bool streamMode = faabric::util::getSystemConfig().streamMode;
     long lastParallelismUpdate;
     int parallelismUpdateInterval;
     bool isPreloadParallelism;
 
     unsigned int chainedIdCounter = 0;
+    // std::atomic<unsigned int> atomicChainedCounter{ 1 };
 
     // Snapshot registry to distribute snapshots in THREADS requests
     faabric::snapshot::SnapshotRegistry& snapshotRegistry;
