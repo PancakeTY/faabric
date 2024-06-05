@@ -30,6 +30,18 @@ std::string funcToString(const faabric::Message& msg, bool includeId)
     return str;
 }
 
+std::string funcParToString(const faabric::Message& msg, bool includeId)
+{
+    std::string str = msg.user() + "/" + msg.function() + "/" +
+                      std::to_string(msg.parallelismid());
+
+    if (includeId) {
+        str += ":" + std::to_string(msg.id());
+    }
+
+    return str;
+}
+
 std::string funcToString(
   const std::shared_ptr<faabric::BatchExecuteRequest>& req)
 {
