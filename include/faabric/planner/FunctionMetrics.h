@@ -22,6 +22,7 @@ class FunctionMetrics
     int lockCongestionTime = 0;
     int lockHoldTime = 0;
     int averageWaitingTime = 0;
+    int averageExecuteTime = 0;
 
   private:
 };

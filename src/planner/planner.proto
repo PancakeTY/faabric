@@ -136,10 +136,11 @@ message FunctionMetricsRes{
     int32 throughput = 2;
     int32 processLatency = 3;
     int32 averageWaitingTime = 4;
+    int32 averageExecuteTime = 5;
     // The following parameters are only used for stateful functions
-    string hostIp = 5;
-    int32 lockCongestionTime = 6;
-    int32 lockHoldTime = 7;   
+    string hostIp = 6;
+    int32 lockCongestionTime = 7;
+    int32 lockHoldTime = 8;   
 }
 
 message FunctionMetricResponse{

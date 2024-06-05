@@ -358,6 +358,8 @@ void PlannerEndpointHandler::onRequest(
                     metricsResp->set_processlatency(funcMetrics.processLatency);
                     metricsResp->set_averagewaitingtime(
                       funcMetrics.averageWaitingTime);
+                    metricsResp->set_averageexecutetime(
+                      funcMetrics.averageExecuteTime);
                     // The following parameters are only used for stateful
                     // functions
                     auto it = stateHost.find(funcMetrics.function);

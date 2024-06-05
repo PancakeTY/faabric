@@ -360,8 +360,10 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg,
                 state.funcLatencyStats.end()) {
                 // Record the Lock metrics here
                 int waitingTime = msg->queueendtime() - msg->queuestarttime();
+                int executeTime =
+                  msg->finishtimestamp() - msg->starttimestamp();
                 state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
-                  msgId, waitingTime);
+                  msgId, waitingTime, executeTime);
                 // Print the metrics Only for debug now.
                 // state.funcLatencyStats[userFuncPar]->print();
             }
@@ -472,8 +474,10 @@ void Planner::setMessageResultWitoutLock(std::shared_ptr<faabric::Message> msg)
                 state.funcLatencyStats.end()) {
                 // Record the Lock metrics here
                 int waitingTime = msg->queueendtime() - msg->queuestarttime();
+                int executeTime =
+                  msg->finishtimestamp() - msg->starttimestamp();
                 state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
-                  msgId, waitingTime);
+                  msgId, waitingTime, executeTime);
                 // Print the metrics Only for debug now.
                 // state.funcLatencyStats[userFuncPar]->print();
             }
@@ -1297,6 +1301,7 @@ std::map<std::string, FunctionMetrics> Planner::collectMetrics()
         ithMetrics.throughput = ithLatency->completedRequests;
         ithMetrics.processLatency = ithLatency->averageLatency;
         ithMetrics.averageWaitingTime = ithLatency->averageWaitingTime;
+        ithMetrics.averageExecuteTime = ithLatency->averageExecuteTime;
         metricsStats.emplace(ithFunction, ithMetrics);
     }
     // Retrive Metrics from State Server.
