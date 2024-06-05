@@ -63,6 +63,8 @@ class Executor
 
     bool isExecuting();
 
+    bool availableClaim();
+
     bool isShutdown() { return _isShutdown; }
 
     void addChainedMessage(const faabric::Message& msg);

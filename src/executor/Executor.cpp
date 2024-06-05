@@ -260,7 +260,7 @@ void Executor::executeBatchTasks(
           "Not restoring {}. threads=false, key={}", funcStr, snapshotKey);
     }
 
-    // Initialise batch counter ??? what is the use of batch counter???
+    // Batch Counter is used to track the runing tasks in executor.
     batchCounter.fetch_add(1, std::memory_order_release);
 
     if (availablePoolThreads.empty()) {
@@ -672,6 +672,12 @@ bool Executor::tryClaim()
     bool expected = false;
     bool wasClaimed = claimed.compare_exchange_strong(expected, true);
     return wasClaimed;
+}
+
+bool Executor::availableClaim()
+{
+    bool available = !claimed.load();
+    return available;
 }
 
 void Executor::releaseClaim()

@@ -156,6 +156,8 @@ class Scheduler
 
     std::atomic<bool> _isShutdown = false;
 
+    int maxReplicas = 8;
+
     int executeBatchsize;
 
     // ---- Executors ----
@@ -175,6 +177,8 @@ class Scheduler
 
     // ---- Actual scheduling ----
     SchedulerReaperThread reaperThread;
+
+    bool executorAvailable(const std::string& funcStr);
 
     std::shared_ptr<faabric::executor::Executor> claimExecutor(
       faabric::Message& msg,

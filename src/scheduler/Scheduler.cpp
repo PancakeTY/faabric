@@ -372,12 +372,16 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
                                      faabric::util::FullLock& lock)
 {
     auto fisrtMsg = waitingBatch.batchQueue.front();
+    std::string funcStr = faabric::util::funcToString(*fisrtMsg, false);
+    // Check if the executor is available.
+    if (!executorAvailable(funcStr)) {
+        return;
+    }
     // Generate new BatchExecuteRequest
     auto newReq = faabric::util::batchExecFactory();
     newReq->set_user(fisrtMsg->user());
     newReq->set_function(fisrtMsg->function());
     while (!waitingBatch.batchQueue.empty()) {
-        // TODO - make sure we have enough resource.
         auto* message = newReq->add_messages();
         *message = std::move(*waitingBatch.batchQueue.front());
         message->set_queueendtime(
@@ -397,6 +401,10 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
                          newReq->messages_size());
             // Execute the tasks
             e->executeBatchTasks(newReq);
+            // Check if the executor is available.
+            if (!executorAvailable(funcStr)) {
+                break;
+            }
             // Reset the newReq
             newReq = faabric::util::batchExecFactory();
             newReq->set_user(fisrtMsg->user());
@@ -445,6 +453,28 @@ std::vector<faabric::Message> Scheduler::getRecordedMessages()
 {
     faabric::util::SharedLock lock(mx);
     return recordedMessages;
+}
+
+bool Scheduler::executorAvailable(const std::string& funcStr)
+{
+    auto& thisExecutors = executors[funcStr];
+    SPDLOG_TRACE(
+      "Checking if executor is available for {}, current executor size {}",
+      funcStr,
+      thisExecutors.size());
+    // If we can reuse warm executors, we can return true.
+    for (auto& e : thisExecutors) {
+        if (e->availableClaim()) {
+            SPDLOG_TRACE("Available executor {} for {}", e->id, funcStr);
+            return true;
+        }
+    }
+    // If current size is less than the max size, we can return true.
+    if (thisExecutors.size() < maxReplicas) {
+        return true;
+    }
+    SPDLOG_TRACE("NO Available executor for {}", funcStr);
+    return false;
 }
 
 std::shared_ptr<faabric::executor::Executor> Scheduler::claimExecutor(
