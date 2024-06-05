@@ -353,18 +353,18 @@ void Scheduler::executeBatchLazy(
         iterator->second.insertMsg(std::move(tempMsg));
     }
 
-    // Invoke the waiting queue if condition is met.
-    for (auto& [userFuncPar, waitingBatch] : waitingQueues) {
-        // If the batchQueue size or the waiting time is higher than the
-        // threashold, execute the tasks.
-        if (waitingBatch.batchQueue.size() == 0) {
-            continue;
-        }
-        if (waitingBatch.batchQueue.size() >= executeBatchsize ||
-            waitingBatch.getTimeInterval() >= conf.batchInterval) {
-            executeBatchForQueue(userFuncPar, waitingBatch, lock);
-        }
-    }
+    // // Invoke the waiting queue if condition is met.
+    // for (auto& [userFuncPar, waitingBatch] : waitingQueues) {
+    //     // If the batchQueue size or the waiting time is higher than the
+    //     // threashold, execute the tasks.
+    //     if (waitingBatch.batchQueue.size() == 0) {
+    //         continue;
+    //     }
+    //     if (waitingBatch.batchQueue.size() >= executeBatchsize ||
+    //         waitingBatch.getTimeInterval() >= conf.batchInterval) {
+    //         executeBatchForQueue(userFuncPar, waitingBatch, lock);
+    //     }
+    // }
 }
 
 void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
@@ -391,6 +391,10 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
             faabric::Message& localMsg = newReq->mutable_messages()->at(0);
             std::shared_ptr<faabric::executor::Executor> e =
               claimExecutor(localMsg, lock);
+            SPDLOG_DEBUG("Claimed executor {} for {} with message size {}",
+                         e->id,
+                         userFuncPar,
+                         newReq->messages_size());
             // Execute the tasks
             e->executeBatchTasks(newReq);
             // Reset the newReq
@@ -425,7 +429,8 @@ void Scheduler::batchTimerCheck()
     }
 }
 
-void Scheduler::resetBatchsize(int32_t newSize) {
+void Scheduler::resetBatchsize(int32_t newSize)
+{
     faabric::util::FullLock lock(mx);
     executeBatchsize = newSize;
 }

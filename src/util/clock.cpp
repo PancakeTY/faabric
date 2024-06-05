@@ -23,6 +23,36 @@ const long Clock::epochMillis()
     return millis;
 }
 
+const long long Clock::epochMicros()
+{
+    // Get the current time_point from the high_resolution_clock
+    auto now = std::chrono::high_resolution_clock::now();
+
+    // Convert the time_point to a duration in microseconds since epoch
+    auto duration = now.time_since_epoch();
+
+    // Convert the duration to microseconds
+    long long microseconds =
+      std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+
+    return microseconds;
+}
+
+const long long Clock::epochNanos()
+{
+    // Get the current time_point from the high_resolution_clock
+    auto now = std::chrono::high_resolution_clock::now();
+
+    // Convert the time_point to a duration in nanoseconds since epoch
+    auto duration = now.time_since_epoch();
+
+    // Convert the duration to nanoseconds
+    long long nanoseconds =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+
+    return nanoseconds;
+}
+
 const long Clock::timeDiff(const TimePoint& t1, const TimePoint& t2)
 {
     long age =

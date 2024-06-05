@@ -53,7 +53,7 @@ void SystemConfig::initialise()
     batchSize = this->getSystemConfIntParam("BATCH_SIZE", "10");
     batchInterval = this->getSystemConfIntParam("BATCH_INTERVAL", "100");
     batchCheckInterval =
-      this->getSystemConfIntParam("BATCH_CHECK_INTERVAL", "10");
+      this->getSystemConfIntParam("BATCH_CHECK_INTERVAL", "5");
     preloadParallelism = getEnvVar("PRELOAD_PARALLELISM", "on") == "on";
     preloadParallelismInfo =
       getEnvVar("PRELOAD_PARALLELISM_INFO",

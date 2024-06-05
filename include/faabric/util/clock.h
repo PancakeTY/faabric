@@ -14,6 +14,10 @@ class Clock
 
     const long epochMillis();
 
+    const long long epochMicros();
+
+    const long long epochNanos();
+
     const long timeDiff(const TimePoint& t1, const TimePoint& t2);
 
     const long timeDiffNano(const TimePoint& t1, const TimePoint& t2);
