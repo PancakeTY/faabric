@@ -48,6 +48,7 @@ message HttpMessage {
         GET_FUNCTION_METRICS = 13;
         SCALE_FUNCTION_PARALLELISM = 14;
         RESET_BATCH_SIZE = 15;
+        RESET_REPLICAS_LIMIT = 16;
     }
 
     Type type = 1 [json_name = "http_type"];
@@ -156,4 +157,8 @@ message FunctionScaleRequest{
 
 message BatchResetRequest{
     int32 batchsize = 1;
+}
+
+message MaxReplicasRequest{
+    int32 maxNum = 1;
 }

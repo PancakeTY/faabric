@@ -111,6 +111,9 @@ class Planner
                                int changedParallelism);
 
     bool resetBatchsize(int32_t newSize);
+
+    bool resetMaxReplicas(int32_t newMaxReplicas);
+    
     // ----------
     // Metrics public API
     // ----------

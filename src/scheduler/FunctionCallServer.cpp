@@ -38,6 +38,10 @@ void FunctionCallServer::doAsyncRecv(transport::Message& message)
             recvResetBatchsize(message.udata());
             break;
         }
+        case faabric::scheduler::FunctionCalls::ResetMaxReplicas: {
+            recvResetMaxReplicas(message.udata());
+            break;
+        }
         default: {
             throw std::runtime_error(
               fmt::format("Unrecognized async call header: {}", header));
@@ -125,5 +129,13 @@ void FunctionCallServer::recvResetBatchsize(std::span<const uint8_t> buffer) {
     SPDLOG_INFO("Resetting batch size to {}", batchSize);
     faabric::scheduler::getScheduler().resetBatchsize(batchSize);
 }
+
+void FunctionCallServer::recvResetMaxReplicas(std::span<const uint8_t> buffer) {
+    PARSE_MSG(faabric::planner::MaxReplicasRequest, buffer.data(), buffer.size());
+    int32_t maxReplicas = parsedMsg.maxnum();
+    SPDLOG_INFO("Resetting max replicas to {}", maxReplicas);
+    faabric::scheduler::getScheduler().resetMaxReplicas(maxReplicas);
+}
+
 
 }

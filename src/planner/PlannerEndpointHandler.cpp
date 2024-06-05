@@ -444,6 +444,21 @@ void PlannerEndpointHandler::onRequest(
 
             return ctx.sendFunction(std::move(response));
         }
+        case faabric::planner::HttpMessage_Type_RESET_REPLICAS_LIMIT: {
+            SPDLOG_DEBUG("Planner received RESET_REPLICAS_LIMIT request");
+            faabric::planner::MaxReplicasRequest rawReq;
+            try {
+                faabric::util::jsonToMessage(msg.payloadjson(), &rawReq);
+            } catch (faabric::util::JsonSerialisationException e) {
+                response.result(beast::http::status::bad_request);
+                response.body() = std::string("Bad JSON in body's payload");
+                return ctx.sendFunction(std::move(response));
+            }
+            int32_t maxReplicas = rawReq.maxnum();
+            faabric::planner::getPlanner().resetMaxReplicas(maxReplicas);
+
+            return ctx.sendFunction(std::move(response));
+        }
         default: {
             SPDLOG_ERROR("Unrecognised message type {}", msg.type());
             response.result(beast::http::status::bad_request);

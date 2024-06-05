@@ -455,6 +455,12 @@ std::vector<faabric::Message> Scheduler::getRecordedMessages()
     return recordedMessages;
 }
 
+void Scheduler::resetMaxReplicas(int32_t newMaxReplicas)
+{
+    faabric::util::FullLock lock(mx);
+    maxReplicas = newMaxReplicas;
+}
+
 bool Scheduler::executorAvailable(const std::string& funcStr)
 {
     auto& thisExecutors = executors[funcStr];

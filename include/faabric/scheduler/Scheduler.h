@@ -133,6 +133,8 @@ class Scheduler
 
     void setThisHostResources(faabric::HostResources& res);
 
+    void resetMaxReplicas(int32_t newMaxReplicas);
+
     // ----------------------------------
     // Testing
     // ----------------------------------

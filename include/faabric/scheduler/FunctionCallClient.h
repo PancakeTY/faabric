@@ -47,6 +47,9 @@ class FunctionCallClient : public faabric::transport::MessageEndpointClient
 
     void resetBatchSize(
       std::shared_ptr<faabric::planner::BatchResetRequest> req);
+
+    void resetMaxReplicas(
+      std::shared_ptr<faabric::planner::MaxReplicasRequest> req);
 };
 
 // -----------------------------------

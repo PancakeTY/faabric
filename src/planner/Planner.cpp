@@ -1373,6 +1373,23 @@ bool Planner::resetBatchsize(int32_t newSize)
     return true;
 }
 
+bool Planner::resetMaxReplicas(int32_t maxReplicas)
+{
+    auto availableHosts = getAvailableHosts();
+    faabric::planner::MaxReplicasRequest req;
+    req.set_maxnum(maxReplicas);
+
+    for (const auto& host : availableHosts) {
+        SPDLOG_INFO(
+          "Planner max replicas {} to {}", host->ip(), maxReplicas);
+        faabric::scheduler::getFunctionCallClient(host->ip())
+          ->resetMaxReplicas(
+            std::make_shared<faabric::planner::MaxReplicasRequest>(req));
+    }
+
+    return true;
+}
+
 Planner& getPlanner()
 {
     static Planner planner;

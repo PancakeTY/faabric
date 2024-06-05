@@ -9,5 +9,6 @@ enum FunctionCalls
     SetMessageResult = 3,
     ExecuteFunctionsLazy = 4,
     ResetBatchsize = 5,
+    ResetMaxReplicas = 6,
 };
 }

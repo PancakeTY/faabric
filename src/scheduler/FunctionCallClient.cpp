@@ -114,6 +114,12 @@ void FunctionCallClient::resetBatchSize(
     asyncSend(faabric::scheduler::FunctionCalls::ResetBatchsize, req.get());
 }
 
+void FunctionCallClient::resetMaxReplicas(
+  std::shared_ptr<faabric::planner::MaxReplicasRequest> req)
+{
+    asyncSend(faabric::scheduler::FunctionCalls::ResetMaxReplicas, req.get());
+}
+
 // -----------------------------------
 // Static setter/getters
 // -----------------------------------
