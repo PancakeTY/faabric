@@ -54,18 +54,18 @@ FunctionState::FunctionState(const std::string& userIn,
 
 long FunctionState::lockWrite()
 {
-    long startTime = faabric::util::getGlobalClock().epochMillis();
+    auto startTime = faabric::util::getGlobalClock().epochMicros();
     SPDLOG_TRACE("Waiting Locking write for {}: {}/{}-{}",
                  hostIp,
                  user,
                  function,
                  parallelismId);
     sem.acquire();
-    long endTime = faabric::util::getGlobalClock().epochMillis();
+    auto endTime = faabric::util::getGlobalClock().epochMicros();
     tempLockAquireTime = endTime;
-    int timeDiff = endTime - startTime;
+    int timeDiff = static_cast<int>(endTime - startTime);
     // Record the locking congestion time
-    SPDLOG_TRACE("Gain Lock and Lock Congestion time for {}/{}-{} is {} ms",
+    SPDLOG_TRACE("Gain Lock and Lock Congestion time for {}/{}-{} is {} µs",
                  user,
                  function,
                  parallelismId,
@@ -81,10 +81,10 @@ void FunctionState::unlockWrite()
                  user,
                  function,
                  parallelismId);
-    long releaseTime = faabric::util::getGlobalClock().epochMillis();
-    int timeDiff = releaseTime - tempLockAquireTime;
+    long long releaseTime = faabric::util::getGlobalClock().epochMicros();
+    int timeDiff = static_cast<int>(releaseTime - tempLockAquireTime);
     // Record the holding time of the lock
-    SPDLOG_TRACE("Write lock holding time for {}/{}-{} is {} ms",
+    SPDLOG_TRACE("Write lock holding time for {}/{}-{} is {} µs",
                  user,
                  function,
                  parallelismId,
@@ -510,8 +510,8 @@ bool FunctionState::rePartitionState(const std::string& newStateHost)
     std::map<std::string, std::string> newStateMap =
       faabric::util::deserializeMapBinary(tempStateVec);
     // // Print the newStateMap
-    // SPDLOG_TRACE("New state map for {}/{}-{}:", user, function, parallelismId);
-    // for (auto& [key, value] : newStateMap) {
+    // SPDLOG_TRACE("New state map for {}/{}-{}:", user, function,
+    // parallelismId); for (auto& [key, value] : newStateMap) {
     //     SPDLOG_TRACE("New state map: {} -> {}", key, value);
     // }
     // If the parallelismId is changed
@@ -546,8 +546,8 @@ bool FunctionState::rePartitionState(const std::string& newStateHost)
         dataTransfer[parIdx][key] = value;
     }
     // // Print the dataTransfer
-    // SPDLOG_TRACE("dataTransfer for {}/{}-{}:", user, function, parallelismId);
-    // for (auto& [par, data] : dataTransfer) {
+    // SPDLOG_TRACE("dataTransfer for {}/{}-{}:", user, function,
+    // parallelismId); for (auto& [par, data] : dataTransfer) {
     //     SPDLOG_TRACE("dataTransfer: {} ->", par);
     //     for (auto& [key, value] : data) {
     //         SPDLOG_TRACE("dataTransfer: {} -> {}", key, value.size());
@@ -630,7 +630,7 @@ std::map<std::string, int> FunctionState::getMetrics()
     metricsResult["lockBlockTime"] = metrics.lockBlockTimeQueue.average();
     metricsResult["lockHoldTime"] = metrics.lockHoldTimeQueue.average();
     // Print the metrics
-    SPDLOG_DEBUG("Metrics for {}/{}-{}: lockBlockTime {} lockHoldTime {}",
+    SPDLOG_DEBUG("Metrics for {}/{}-{}: lockBlockTime {} µs lockHoldTime {} µs",
                  user,
                  function,
                  parallelismId,

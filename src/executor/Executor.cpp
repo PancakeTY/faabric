@@ -273,6 +273,7 @@ void Executor::executeBatchTasks(
     int threadPoolIdx = *availablePoolThreads.begin();
     availablePoolThreads.erase(threadPoolIdx);
 
+    // In there it should always be thread 0
     SPDLOG_TRACE("Assigned current batch functions to thread {}",
                  threadPoolIdx);
 

@@ -103,7 +103,7 @@ class FunctionState
     size_t sharedMemSize = 0;
     void* sharedMemory = nullptr;
 
-    long tempLockAquireTime = 0;
+    long long tempLockAquireTime = 0;
 
     // std::unordered_map<std::string, std::vector<uint8_t>> state;
     FunctionStateMetrics metrics;
