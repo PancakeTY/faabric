@@ -9,6 +9,7 @@
 #include <faabric/snapshot/SnapshotRegistry.h>
 #include <faabric/transport/PointToPointBroker.h>
 #include <faabric/util/batch.h>
+#include <faabric/util/clock.h>
 #include <faabric/util/config.h>
 #include <faabric/util/environment.h>
 #include <faabric/util/func.h>
@@ -494,6 +495,7 @@ std::shared_ptr<faabric::executor::Executor> Scheduler::claimExecutor(
 
     auto factory = faabric::executor::getExecutorFactory();
 
+    auto timeFlag1 = faabric::util::getGlobalClock().epochMicros();
     std::shared_ptr<faabric::executor::Executor> claimed = nullptr;
     for (auto& e : thisExecutors) {
         if (e->tryClaim()) {
@@ -525,7 +527,12 @@ std::shared_ptr<faabric::executor::Executor> Scheduler::claimExecutor(
         // Claim it
         claimed->tryClaim();
     }
-
+    auto timeFlag2 = faabric::util::getGlobalClock().epochMicros();
+    int elapsed = static_cast<int>(timeFlag2 - timeFlag1);
+    SPDLOG_INFO("Claimed executor {} for {} in {}us",
+                claimed->id,
+                funcStr,
+                elapsed);
     assert(claimed != nullptr);
     return claimed;
 }
