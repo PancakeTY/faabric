@@ -9,11 +9,24 @@
 #define MAIN_KEY_PREFIX "main_"
 
 namespace faabric::batch_scheduler {
+/*
+HERE is the logic of registering function state to the host.
+BEFORE COMPILE
+write funcChainedMap: records all functions in an chained application.
+write funcStateRegMap: records function state functions and their partition info
+--- These two maps should never be changed after the initialization.
+INITIALIZING
+When stateful function is invoked first time. It would initialize the function
+state with parallelism 1
+Faasmctl stream.scale can change the parallelism:
+When parallelism is not initlized, it only register new parallelism
+Otherwise, it will increase the parallelism and repartition function state
+*/
 
 // We register the function state in the functionStateRegister map.
-void StateAwareScheduler::funcStateInitializer(
-  std::map<std::string, std::tuple<std::string, std::string>> otherRegister)
+void StateAwareScheduler::funcStateInitializer()
 {
+    
     maxParallelism = faabric::util::getSystemConfig().maxParallelism;
     // Register the chaining functions in the same topology.
     funcChainedMap["stream_function_source"] = {
@@ -30,33 +43,6 @@ void StateAwareScheduler::funcStateInitializer(
       std::make_tuple("partitionInputKey", "partitionStateKey");
     funcStateRegMap["stream_wordcount_count"] =
       std::make_tuple("partitionInputKey", "partitionStateKey");
-
-    // Get the preload Infomation
-    std::string preloadInfo =
-      faabric::util::getSystemConfig().preloadParallelismInfo;
-
-    std::istringstream ss(preloadInfo);
-    std::string key;
-    int value;
-
-    while (std::getline(ss, key, ',') && ss >> value) {
-        preParallelismMap[key] = value;
-        // Discard the comma after the value
-        if (ss.peek() == ',') {
-            ss.ignore();
-        }
-    }
-
-    // // iterate over the Functions Chained Maps
-    // for (const auto [ithSource, ithChainedFunctions] : funcChainedMap) {
-    //     // We only increase the parallelism for function-state functions.
-    //     for (const auto& function : ithChainedFunctions) {
-    //         if (!funcStateRegMap.contains(function)) {
-    //             continue;
-    //         }
-    //         // Update parallelism if necessary.
-    //     }
-    // }
 }
 
 static std::map<std::string, int> getHostFreqCount(
@@ -736,24 +722,6 @@ bool StateAwareScheduler::repartitionParitionedState(
     return true;
 }
 
-void StateAwareScheduler::preloadParallelism(HostMap& hostMap)
-{
-    if (preParallelismMap.size() == 0) {
-        return;
-    }
-
-    for (const auto& [ithUserFunction, ithParallelism] : preParallelismMap) {
-        // If this function is already initialized, skip it.
-        if (functionParallelism.contains(ithUserFunction) &&
-            functionParallelism[ithUserFunction] == ithParallelism) {
-            continue;
-        }
-        initializeState(hostMap, ithUserFunction, ithParallelism);
-    }
-
-    preParallelismMap.clear();
-}
-
 void StateAwareScheduler::updateParallelism(
   HostMap& hostMap,
   std::map<std::string, faabric::planner::FunctionMetrics> metrics)
@@ -859,6 +827,7 @@ void StateAwareScheduler::flushStateInfo()
     functionParallelism.clear();
     functionCounter.clear();
     stateHost.clear();
+    stateHashRing.clear();
     statePartitionBy.clear();
 }
 

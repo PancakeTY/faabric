@@ -454,7 +454,7 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionRuntimeMetri
       functionRuntimeProto->set_userfuncpar(function);
       functionRuntimeProto->set_lockblocktime(functionRuntime["lockBlockTime"]);
       functionRuntimeProto->set_lockholdtime(functionRuntime["lockHoldTime"]);
-      SPDLOG_TRACE("Function metrics: {} - lockBlockTime: {}, lockHoldTime: {}",
+      SPDLOG_DEBUG("StateServer: Function metrics: {} - lockBlockTime: {}, lockHoldTime: {}",
                    function,
                    functionRuntime["lockBlockTime"],
                    functionRuntime["lockHoldTime"]);

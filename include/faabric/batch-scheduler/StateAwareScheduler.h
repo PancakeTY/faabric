@@ -18,9 +18,7 @@ class StateAwareScheduler final : public BatchScheduler
     StateAwareScheduler()
     {
         // Initialization code here
-        std::map<std::string, std::tuple<std::string, std::string>>
-          otherRegister;
-        funcStateInitializer(otherRegister);
+        funcStateInitializer();
     }
 
     std::shared_ptr<SchedulingDecision> makeSchedulingDecision(
@@ -44,8 +42,6 @@ class StateAwareScheduler final : public BatchScheduler
       std::shared_ptr<std::map<std::string, std::string>> oldStateHost);
 
     void flushStateInfo();
-
-    void preloadParallelism(HostMap& hostMap);
 
     void updateParallelism(
       HostMap& hostMap,
@@ -79,8 +75,6 @@ class StateAwareScheduler final : public BatchScheduler
     /***
      * The following maps are used to store the state of the functions.
      */
-    // FunctionUser : Preload Parallelism
-    std::map<std::string, int> preParallelismMap;
     // FunctionUser : Parallelism
     std::map<std::string, int> functionParallelism;
     // FunctionUser : Counter. It is used for shuffle grouping.
@@ -107,9 +101,7 @@ class StateAwareScheduler final : public BatchScheduler
                          std::string userFunc,
                          int parallelism = 1);
 
-    void funcStateInitializer(
-      std::map<std::string, std::tuple<std::string, std::string>>
-        otherRegister);
+    void funcStateInitializer();
 
     /***
      * example should be like:

@@ -630,12 +630,12 @@ std::map<std::string, int> FunctionState::getMetrics()
     metricsResult["lockBlockTime"] = metrics.lockBlockTimeQueue.average();
     metricsResult["lockHoldTime"] = metrics.lockHoldTimeQueue.average();
     // Print the metrics
-    SPDLOG_DEBUG("Metrics for {}/{}-{}: lockBlockTime {} µs lockHoldTime {} µs",
-                 user,
-                 function,
-                 parallelismId,
-                 metricsResult["lockBlockTime"],
-                 metricsResult["lockHoldTime"]);
+    // SPDLOG_DEBUG("Metrics for {}/{}-{}: lockBlockTime {} µs lockHoldTime {} µs",
+    //              user,
+    //              function,
+    //              parallelismId,
+    //              metricsResult["lockBlockTime"],
+    //              metricsResult["lockHoldTime"]);
     return metricsResult;
 }
 

@@ -159,6 +159,9 @@ void Scheduler::reset()
 
     // Restart reaper thread
     reaperThread.start(conf.reaperIntervalSeconds);
+
+    waitingQueues.clear();
+
 }
 
 void Scheduler::shutdown()
@@ -529,7 +532,7 @@ std::shared_ptr<faabric::executor::Executor> Scheduler::claimExecutor(
     }
     auto timeFlag2 = faabric::util::getGlobalClock().epochMicros();
     int elapsed = static_cast<int>(timeFlag2 - timeFlag1);
-    SPDLOG_INFO("Claimed executor {} for {} in {}us",
+    SPDLOG_DEBUG("Claimed executor {} for {} in {}us",
                 claimed->id,
                 funcStr,
                 elapsed);

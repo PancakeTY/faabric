@@ -155,6 +155,20 @@ void Planner::flushHosts()
 
 void Planner::flushExecutors()
 {
+    // Flush Planner State
+    state.funcLatencyStats.clear();
+    state.chainFuncLatencyStats.clear();
+    state.chainedInflights.clear();
+    // Flush Aware Scheduler State
+    auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
+    auto stateAwareScheduler =
+      std::dynamic_pointer_cast<batch_scheduler::StateAwareScheduler>(
+        batchScheduler);
+    // If preload the parallelism desision, we change the parallelism here
+    if (stateAwareScheduler) {
+        stateAwareScheduler->flushStateInfo();
+    }
+
     auto availableHosts = getAvailableHosts();
 
     for (const auto& host : availableHosts) {
@@ -793,11 +807,11 @@ void Planner::callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req)
     // TODO - This function should be removed. The default parallelism of each
     // function state is 1 and adjusted by the state-aware scheduler or
     // faasmctl.
-    if (isPreloadParallelism) {
-        stateAwareScheduler->preloadParallelism(hostMapCopy);
-    } else {
-        // TODO - adjust parallelism according to metrics
-    }
+    // if (isPreloadParallelism) {
+    //     stateAwareScheduler->preloadParallelism(hostMapCopy);
+    // } else {
+    //     // TODO - adjust parallelism according to metrics
+    // }
 
     decision = stateAwareScheduler->scheduleWithoutLock(
       hostMapCopy, state.inFlightReqs, req);
@@ -952,10 +966,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
           stateAwareScheduler =
             std::dynamic_pointer_cast<batch_scheduler::StateAwareScheduler>(
               batchScheduler);
-        // If preload the parallelism desision, we change the parallelism here
-        if (stateAwareScheduler && isPreloadParallelism) {
-            stateAwareScheduler->preloadParallelism(hostMapCopy);
-        }
+        // If preload the parallelism desision, we fix the parallelism
         // Otherwise adjust the parallelism according to the metrics
         if (stateAwareScheduler && !isPreloadParallelism) {
             long currentTime = faabric::util::getGlobalClock().epochMillis();
@@ -1295,6 +1306,18 @@ std::map<std::string, FunctionMetrics> Planner::collectMetrics()
         ithMetrics.processLatency = ithLatency->averageLatency;
         metricsStats.emplace(ithFunction, ithMetrics);
     }
+    std::map<std::string, std::map<std::string, int>> tempMetrics;
+    // Retrive Metrics from State Server.
+    for (auto [ithHostName, ithHostObject] : state.hostMap) {
+        state::FunctionStateClient cli(ithHostName);
+        auto hostMetrics = cli.getMetrics();
+        for (auto& [ithUserFuncPar, ithStateMetrics] : hostMetrics) {
+        // Accumulate metrics
+        tempMetrics[ithUserFuncPar][LOCK_BLOCK_TIME] += ithStateMetrics[LOCK_BLOCK_TIME];
+        tempMetrics[ithUserFuncPar][LOCK_HOLD_TIME] += ithStateMetrics[LOCK_HOLD_TIME];
+        }
+    }
+
     // Metrics of single function
     for (auto [ithFunction, ithLatency] : state.funcLatencyStats) {
         FunctionMetrics ithMetrics = FunctionMetrics(ithFunction);
@@ -1302,24 +1325,16 @@ std::map<std::string, FunctionMetrics> Planner::collectMetrics()
         ithMetrics.processLatency = ithLatency->averageLatency;
         ithMetrics.averageWaitingTime = ithLatency->averageWaitingTime;
         ithMetrics.averageExecuteTime = ithLatency->averageExecuteTime;
-        metricsStats.emplace(ithFunction, ithMetrics);
-    }
-    // Retrive Metrics from State Server.
-    for (auto [ithHostName, ithHostObject] : state.hostMap) {
-        std::map<std::string, std::map<std::string, int>> tempMetrics;
-        state::FunctionStateClient cli(ithHostName);
-        tempMetrics = cli.getMetrics();
         for (auto [ithUserFuncPar, ithStateMetrics] : tempMetrics) {
-            if (!metricsStats.contains(ithUserFuncPar)) {
-                SPDLOG_WARN("Metrics for {} not found in planner",
-                            ithUserFuncPar);
-                throw std::runtime_error("Metrics not found in planner");
+            if (ithUserFuncPar!=ithMetrics.function) {
+                continue;
             }
-            auto ithMetrics = metricsStats.at(ithUserFuncPar);
             ithMetrics.lockCongestionTime = ithStateMetrics[LOCK_BLOCK_TIME];
             ithMetrics.lockHoldTime = ithStateMetrics[LOCK_HOLD_TIME];
         }
+        metricsStats.emplace(ithFunction, ithMetrics);
     }
+
     // Print the metrics.
     for (auto [ithFunc, ithMetrics] : metricsStats) {
         SPDLOG_DEBUG("Metrics for {}: throughput: {}, processLatency: {}, "
@@ -1380,8 +1395,7 @@ bool Planner::resetMaxReplicas(int32_t maxReplicas)
     req.set_maxnum(maxReplicas);
 
     for (const auto& host : availableHosts) {
-        SPDLOG_INFO(
-          "Planner max replicas {} to {}", host->ip(), maxReplicas);
+        SPDLOG_INFO("Planner max replicas {} to {}", host->ip(), maxReplicas);
         faabric::scheduler::getFunctionCallClient(host->ip())
           ->resetMaxReplicas(
             std::make_shared<faabric::planner::MaxReplicasRequest>(req));
