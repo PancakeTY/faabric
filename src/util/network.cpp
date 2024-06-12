@@ -14,6 +14,7 @@
 namespace faabric::util {
 static std::unordered_map<std::string, std::string> ipMap;
 static std::mutex hostnameMx;
+static std::string planner_address;
 
 std::string getIPFromHostname(const std::string& hostname)
 {
@@ -22,6 +23,12 @@ std::string getIPFromHostname(const std::string& hostname)
     // this is not performance critical. This function is usually called once
     // during initialisation (it may affect throughput measurements, though)
     faabric::util::UniqueLock lock(hostnameMx);
+
+    // We cache the IP address for the planner, as it is used frequently in
+    // workers. Otherwise, with high network traffic, record might be null.
+    if (hostname == "planner" && !planner_address.empty()) {
+        return planner_address;
+    }
 
     hostent* record = gethostbyname(hostname.c_str());
 
@@ -32,6 +39,10 @@ std::string getIPFromHostname(const std::string& hostname)
 
     auto* address = (in_addr*)record->h_addr;
     std::string ipAddress = inet_ntoa(*address);
+
+    if (hostname == "planner") {
+        planner_address = ipAddress;
+    }
 
     return ipAddress;
 }
