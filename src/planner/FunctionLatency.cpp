@@ -123,6 +123,81 @@ void FunctionLatency::removeInFlightReqs(int id,
     removeInFlightReqs(id);
 }
 
+void FunctionLatency::removeInFlightReqs(int id,
+                                         int plannerQueueTimeIn,
+                                         int plannerConsumeTimeIn,
+                                         int workerWaitingTimeIn,
+                                         int prepareExecuterTimeIn,
+                                         int workerExecutionTimeIn,
+                                         int totalTimeIn)
+{
+    {
+        std::lock_guard<std::mutex> guard(funcLatencyMtx);
+
+        // Update planner queue time
+        double plannerQueueTime = static_cast<double>(plannerQueueTimeIn);
+        averagePlannerQueueTime =
+            (plannerQueueCount > 0)
+                ? (averagePlannerQueueTime +
+                   (plannerQueueTime - averagePlannerQueueTime) /
+                       (plannerQueueCount + 1.0))
+                : plannerQueueTime;
+        plannerQueueCount++;
+
+        // Update planner consume time
+        double plannerConsumeTime = static_cast<double>(plannerConsumeTimeIn);
+        averagePlannerConsumeTime =
+            (plannerConsumeCount > 0)
+                ? (averagePlannerConsumeTime +
+                   (plannerConsumeTime - averagePlannerConsumeTime) /
+                       (plannerConsumeCount + 1.0))
+                : plannerConsumeTime;
+        plannerConsumeCount++;
+
+        // Update worker waiting time
+        double workerWaitingTime = static_cast<double>(workerWaitingTimeIn);
+        averageWaitingTime =
+            (waitingQueueCount > 0)
+                ? (averageWaitingTime +
+                   (workerWaitingTime - averageWaitingTime) /
+                       (waitingQueueCount + 1.0))
+                : workerWaitingTime;
+        waitingQueueCount++;
+
+        // Update prepare executor time
+        double prepareExecuterTime = static_cast<double>(prepareExecuterTimeIn);
+        averagePrepareExecuterTime =
+            (prepareExecuterCount > 0)
+                ? (averagePrepareExecuterTime +
+                   (prepareExecuterTime - averagePrepareExecuterTime) /
+                       (prepareExecuterCount + 1.0))
+                : prepareExecuterTime;
+        prepareExecuterCount++;
+
+        // Update worker execution time
+        double workerExecutionTime = static_cast<double>(workerExecutionTimeIn);
+        averageExecuteTime =
+            (completedRequests > 0)
+                ? (averageExecuteTime +
+                   (workerExecutionTime - averageExecuteTime) /
+                       (completedRequests + 1.0))
+                : workerExecutionTime;
+        completedRequests++;
+
+        // Update total time
+        double totalTime = static_cast<double>(totalTimeIn);
+        averageTotalTime =
+            (totalRequestCount > 0)
+                ? (averageTotalTime +
+                   (totalTime - averageTotalTime) /
+                       (totalRequestCount + 1.0))
+                : totalTime;
+        totalRequestCount++;
+    }
+    removeInFlightReqs(id);
+}
+
+
 void FunctionLatency::updateThroughput(size_t currentMinute)
 {
     size_t minutesElapsed = currentMinute - lastUpdateMinute;

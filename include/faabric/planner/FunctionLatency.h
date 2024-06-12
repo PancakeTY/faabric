@@ -4,9 +4,9 @@
 #include <array>
 #include <faabric/util/clock.h>
 #include <map>
+#include <numeric>
 #include <stddef.h>
 #include <string>
-#include <numeric>
 
 /* Metrics is used for records the Latency and Throughput for the function.
  * Latency is the process time latency
@@ -40,8 +40,18 @@ class FunctionLatency
     // It is called when a source function is finished.
     void removeInFlightReqs(int id);
     // For the functions, we also record the time waiting in batch queue
-    void removeInFlightReqs(int id, int batchWaitingTimeIn, int batchExecutionTimeIn);
 
+    void removeInFlightReqs(int id,
+                            int batchWaitingTimeIn,
+                            int batchExecutionTimeIn);
+
+    void removeInFlightReqs(int id,
+                            int plannerQueueTimeIn,
+                            int plannerConsumeTimeIn,
+                            int workerWaitingTimeIn,
+                            int prepareExecuterTimeIn,
+                            int workerExecutionTimeIn,
+                            int totalTimeIn);
     void updateThroughput(size_t currentMinute);
 
     // Function name
@@ -54,6 +64,18 @@ class FunctionLatency
     size_t waitingQueueCount = 0;
     size_t averageWaitingTime = 0;
     size_t averageExecuteTime = 0;
+
+    size_t averagePlannerQueueTime = 0;
+    size_t plannerQueueCount = 0;
+
+    size_t averagePlannerConsumeTime = 0;
+    size_t plannerConsumeCount = 0;
+
+    size_t averagePrepareExecuterTime = 0;
+    size_t prepareExecuterCount = 0;
+
+    size_t averageTotalTime = 0;
+    size_t totalRequestCount = 0;
     // The map of the function ID to its invoke time
     std::map<int, long> invokeTimeMap;
 

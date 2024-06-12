@@ -161,7 +161,6 @@ void Scheduler::reset()
     reaperThread.start(conf.reaperIntervalSeconds);
 
     waitingQueues.clear();
-
 }
 
 void Scheduler::shutdown()
@@ -347,8 +346,8 @@ void Scheduler::executeBatchLazy(
         std::shared_ptr<faabric::Message> tempMsg =
           std::make_shared<faabric::Message>(*req->mutable_messages(i));
         // Set the queue start time here.
-        tempMsg->set_queuestarttime(
-          faabric::util::getGlobalClock().epochMillis());
+        tempMsg->set_workerqueuetime(
+          faabric::util::getGlobalClock().epochMicros());
         std::string userFuncPar = tempMsg->user() + "_" + tempMsg->function() +
                                   "_" +
                                   std::to_string(tempMsg->parallelismid());
@@ -388,8 +387,8 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
     while (!waitingBatch.batchQueue.empty()) {
         auto* message = newReq->add_messages();
         *message = std::move(*waitingBatch.batchQueue.front());
-        message->set_queueendtime(
-          faabric::util::getGlobalClock().epochMillis());
+        message->set_workerpoptime(
+          faabric::util::getGlobalClock().epochMicros());
         waitingBatch.batchQueue.pop();
         // If the batch size is reached, execute it.
         if (newReq->messages_size() >= executeBatchsize ||
@@ -397,8 +396,17 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
             // Claim new Executor, we can bound the first msg here, since claim
             // only needs the user and function of Message.
             faabric::Message& localMsg = newReq->mutable_messages()->at(0);
+            // Record the time for claim executor.
+            auto timeFlag1 = faabric::util::getGlobalClock().epochMicros();
             std::shared_ptr<faabric::executor::Executor> e =
               claimExecutor(localMsg, lock);
+            auto timeFlag2 = faabric::util::getGlobalClock().epochMicros();
+            int elapsed = static_cast<int>(timeFlag2 - timeFlag1);
+            for (int i = 0; i < newReq->messages_size(); i++) {
+                newReq->mutable_messages()->at(i).set_executorpreparetime(
+                  elapsed);
+            }
+
             SPDLOG_DEBUG("Claimed executor {} for {} with message size {}",
                          e->id,
                          userFuncPar,
@@ -498,7 +506,7 @@ std::shared_ptr<faabric::executor::Executor> Scheduler::claimExecutor(
 
     auto factory = faabric::executor::getExecutorFactory();
 
-    auto timeFlag1 = faabric::util::getGlobalClock().epochMicros();
+    // auto timeFlag1 = faabric::util::getGlobalClock().epochMicros();
     std::shared_ptr<faabric::executor::Executor> claimed = nullptr;
     for (auto& e : thisExecutors) {
         if (e->tryClaim()) {
@@ -530,12 +538,12 @@ std::shared_ptr<faabric::executor::Executor> Scheduler::claimExecutor(
         // Claim it
         claimed->tryClaim();
     }
-    auto timeFlag2 = faabric::util::getGlobalClock().epochMicros();
-    int elapsed = static_cast<int>(timeFlag2 - timeFlag1);
-    SPDLOG_DEBUG("Claimed executor {} for {} in {}us",
-                claimed->id,
-                funcStr,
-                elapsed);
+    // auto timeFlag2 = faabric::util::getGlobalClock().epochMicros();
+    // int elapsed = static_cast<int>(timeFlag2 - timeFlag1);
+    // SPDLOG_DEBUG("Claimed executor {} for {} in {}us",
+    //             claimed->id,
+    //             funcStr,
+    //             elapsed);
     assert(claimed != nullptr);
     return claimed;
 }

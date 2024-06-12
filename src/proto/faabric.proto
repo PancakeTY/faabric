@@ -145,8 +145,15 @@ message Message {
 
     // State
     // Hint the Parallelism Id of this task
-    int64 queueStartTime = 96;
-    int64 queueEndTime = 97;
+    int64 plannerQueueTime = 90;
+    int64 plannerPopTime = 91;
+    int64 plannerDispatchTime = 92;
+    int64 workerQueueTime = 93;
+    int64 workerPopTime = 94;
+    // Time for claiming executor
+    int32 ExecutorPrepareTime = 95;
+    int64 workerExecuteStart = 96;
+    int64 workerExecuteEnd = 97;
     int32 chainedId = 98;
     int32 parallelismId = 99;
 }

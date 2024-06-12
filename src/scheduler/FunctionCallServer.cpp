@@ -105,6 +105,8 @@ void FunctionCallServer::recvExecuteFunctionsLazy(
 
     // TODO - we can set the queue time here
     // This host has now been told to execute these functions no matter what
+    // For WAMR, start time stamp is twice. It will be set again in
+    // WasmModlue.cpp
     for (int i = 0; i < parsedMsg.messages_size(); i++) {
         parsedMsg.mutable_messages()->at(i).set_starttimestamp(
           faabric::util::getGlobalClock().epochMillis());
@@ -123,19 +125,22 @@ void FunctionCallServer::recvSetMessageResult(std::span<const uint8_t> buffer)
       std::make_shared<faabric::Message>(parsedMsg));
 }
 
-void FunctionCallServer::recvResetBatchsize(std::span<const uint8_t> buffer) {
-    PARSE_MSG(faabric::planner::BatchResetRequest, buffer.data(), buffer.size());
+void FunctionCallServer::recvResetBatchsize(std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(
+      faabric::planner::BatchResetRequest, buffer.data(), buffer.size());
     int32_t batchSize = parsedMsg.batchsize();
     SPDLOG_INFO("Resetting batch size to {}", batchSize);
     faabric::scheduler::getScheduler().resetBatchsize(batchSize);
 }
 
-void FunctionCallServer::recvResetMaxReplicas(std::span<const uint8_t> buffer) {
-    PARSE_MSG(faabric::planner::MaxReplicasRequest, buffer.data(), buffer.size());
+void FunctionCallServer::recvResetMaxReplicas(std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(
+      faabric::planner::MaxReplicasRequest, buffer.data(), buffer.size());
     int32_t maxReplicas = parsedMsg.maxnum();
     SPDLOG_INFO("Resetting max replicas to {}", maxReplicas);
     faabric::scheduler::getScheduler().resetMaxReplicas(maxReplicas);
 }
-
 
 }

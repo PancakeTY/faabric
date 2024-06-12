@@ -373,7 +373,7 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg,
             if (state.funcLatencyStats.find(userFuncPar) !=
                 state.funcLatencyStats.end()) {
                 // Record the Lock metrics here
-                int waitingTime = msg->queueendtime() - msg->queuestarttime();
+                int waitingTime = msg->workerpoptime() - msg->workerqueuetime();
                 int executeTime =
                   msg->finishtimestamp() - msg->starttimestamp();
                 state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
@@ -487,11 +487,17 @@ void Planner::setMessageResultWitoutLock(std::shared_ptr<faabric::Message> msg)
             if (state.funcLatencyStats.find(userFuncPar) !=
                 state.funcLatencyStats.end()) {
                 // Record the Lock metrics here
-                int waitingTime = msg->queueendtime() - msg->queuestarttime();
+                // int plannerQueueTime =
+                //   msg->plannerpoptime() - msg->plannerqueuetime();
+                // int plannerConsumeTime = msg->plannerdispatchtime() -
+                //                          msg->workerqueuetime();
+                int workerQueueTime = msg->workerpoptime() - msg->workerqueuetime();
+                // int prepareExecuterTime = msg->executorpreparetime();
                 int executeTime =
-                  msg->finishtimestamp() - msg->starttimestamp();
+                  msg->workerexecuteend() - msg->workerexecutestart();
+                // int totalTime = msg->finishtimestamp() - msg->starttimestamp();
                 state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
-                  msgId, waitingTime, executeTime);
+                  msgId, workerQueueTime, executeTime);
                 // Print the metrics Only for debug now.
                 // state.funcLatencyStats[userFuncPar]->print();
             }
@@ -727,6 +733,12 @@ void Planner::enqueueCallBatch(std::shared_ptr<BatchExecuteRequest> req,
 {
     int appId = req->appid();
 
+    // Record planner enqueue time
+    auto currentTime = faabric::util::getGlobalClock().epochMicros();
+    for (int i = 0; i < req->messages_size(); i++) {
+        req->mutable_messages(i)->set_plannerqueuetime(currentTime);
+    }
+
     if (isChained) {
         faabric::util::FullLock lock(plannerMx);
 
@@ -764,6 +776,12 @@ void Planner::callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req)
     int appId = req->appid();
 
     faabric::util::FullLock lock(plannerMx);
+
+    // Record planner dequeue time
+    auto currentTime = faabric::util::getGlobalClock().epochMicros();
+    for (int i = 0; i < req->messages_size(); i++) {
+        req->mutable_messages(i)->set_plannerpoptime(currentTime);
+    }
 
     auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
     auto decisionType =
@@ -1221,10 +1239,13 @@ void Planner::dispatchSchedulingDecision(
     assert(req->messages_size() == decision->hosts.size());
     bool isSingleHost = decision->isSingleHost();
 
+    auto currentTime = faabric::util::getGlobalClock().epochMicros();
     // First we build all the BatchExecuteRequests for all the different hosts.
     // We need to keep a map as the hosts may not be contiguous in the decision
     // (i.e. we may have (hostA, hostB, hostA)
     for (int i = 0; i < req->messages_size(); i++) {
+        auto mutable_msg = req->mutable_messages(i);
+        mutable_msg->set_plannerdispatchtime(currentTime);
         auto msg = req->messages().at(i);
 
         // Initialise the BER if it is not there
@@ -1312,9 +1333,11 @@ std::map<std::string, FunctionMetrics> Planner::collectMetrics()
         state::FunctionStateClient cli(ithHostName);
         auto hostMetrics = cli.getMetrics();
         for (auto& [ithUserFuncPar, ithStateMetrics] : hostMetrics) {
-        // Accumulate metrics
-        tempMetrics[ithUserFuncPar][LOCK_BLOCK_TIME] += ithStateMetrics[LOCK_BLOCK_TIME];
-        tempMetrics[ithUserFuncPar][LOCK_HOLD_TIME] += ithStateMetrics[LOCK_HOLD_TIME];
+            // Accumulate metrics
+            tempMetrics[ithUserFuncPar][LOCK_BLOCK_TIME] +=
+              ithStateMetrics[LOCK_BLOCK_TIME];
+            tempMetrics[ithUserFuncPar][LOCK_HOLD_TIME] +=
+              ithStateMetrics[LOCK_HOLD_TIME];
         }
     }
 
@@ -1326,7 +1349,7 @@ std::map<std::string, FunctionMetrics> Planner::collectMetrics()
         ithMetrics.averageWaitingTime = ithLatency->averageWaitingTime;
         ithMetrics.averageExecuteTime = ithLatency->averageExecuteTime;
         for (auto [ithUserFuncPar, ithStateMetrics] : tempMetrics) {
-            if (ithUserFuncPar!=ithMetrics.function) {
+            if (ithUserFuncPar != ithMetrics.function) {
                 continue;
             }
             ithMetrics.lockCongestionTime = ithStateMetrics[LOCK_BLOCK_TIME];
