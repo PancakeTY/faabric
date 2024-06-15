@@ -491,11 +491,13 @@ void Planner::setMessageResultWitoutLock(std::shared_ptr<faabric::Message> msg)
                 //   msg->plannerpoptime() - msg->plannerqueuetime();
                 // int plannerConsumeTime = msg->plannerdispatchtime() -
                 //                          msg->workerqueuetime();
-                int workerQueueTime = msg->workerpoptime() - msg->workerqueuetime();
+                int workerQueueTime =
+                  msg->workerpoptime() - msg->workerqueuetime();
                 // int prepareExecuterTime = msg->executorpreparetime();
                 int executeTime =
                   msg->workerexecuteend() - msg->workerexecutestart();
-                // int totalTime = msg->finishtimestamp() - msg->starttimestamp();
+                // int totalTime = msg->finishtimestamp() -
+                // msg->starttimestamp();
                 state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
                   msgId, workerQueueTime, executeTime);
                 // Print the metrics Only for debug now.
@@ -659,6 +661,12 @@ std::shared_ptr<faabric::BatchExecuteRequestStatus> Planner::getBatchResults(
 
         if (!state.appResults.contains(appId)) {
             return nullptr;
+        }
+
+        // If it's not finish, we just return the empty result
+        if (state.inFlightReqs.contains(appId)) {
+            berStatus->set_finished(false);
+            return berStatus;
         }
 
         for (auto msgResultPair : state.appResults.at(appId)) {

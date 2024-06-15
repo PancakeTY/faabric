@@ -234,6 +234,15 @@ void PlannerEndpointHandler::onRequest(
                 return ctx.sendFunction(std::move(response));
             }
 
+            // For Request from the user, we will return false if the waiting
+            // queue is too large.
+            int numInFlight =
+              faabric::planner::getPlanner().getInFlightReqs().size();
+            if (numInFlight >= maxInflightReqs) {
+                response.result(beast::http::status::internal_server_error);
+                response.body() = "No available hosts";
+                return ctx.sendFunction(std::move(response));
+            }
             // Execute the BER
             // auto decision = getPlanner().callBatch(ber);
             getPlanner().enqueueCallBatch(ber);
@@ -456,6 +465,32 @@ void PlannerEndpointHandler::onRequest(
             }
             int32_t maxReplicas = rawReq.maxnum();
             faabric::planner::getPlanner().resetMaxReplicas(maxReplicas);
+
+            return ctx.sendFunction(std::move(response));
+        }
+        case faabric::planner::HttpMessage_Type_RESET_STREAM_PARAMETER: {
+            SPDLOG_DEBUG("Planner received RESET_STREAM_PARAMETER request");
+            faabric::planner::ResetStreamParameterRequest rawReq;
+            try {
+                faabric::util::jsonToMessage(msg.payloadjson(), &rawReq);
+            } catch (faabric::util::JsonSerialisationException e) {
+                response.result(beast::http::status::bad_request);
+                response.body() = std::string("Bad JSON in body's payload");
+                return ctx.sendFunction(std::move(response));
+            }
+            std::string parameter = rawReq.parameter();
+            int32_t value = rawReq.value();
+            SPDLOG_INFO("Planner Handler Resetting parameter {} to value {}",
+                        parameter,
+                        value);
+            if (parameter == "max_inflight_reqs") {
+                maxInflightReqs = value;
+            } else {
+                SPDLOG_ERROR("Unrecognized parameter {}", parameter);
+                response.result(beast::http::status::bad_request);
+                response.body() = std::string("Unrecognized parameter");
+                return ctx.sendFunction(std::move(response));
+            }
 
             return ctx.sendFunction(std::move(response));
         }

@@ -49,6 +49,7 @@ message HttpMessage {
         SCALE_FUNCTION_PARALLELISM = 14;
         RESET_BATCH_SIZE = 15;
         RESET_REPLICAS_LIMIT = 16;
+        RESET_STREAM_PARAMETER = 17;
     }
 
     Type type = 1 [json_name = "http_type"];
@@ -161,4 +162,9 @@ message BatchResetRequest{
 
 message MaxReplicasRequest{
     int32 maxNum = 1;
+}
+
+message ResetStreamParameterRequest{
+    string parameter = 1;
+    int32 value = 2;
 }
