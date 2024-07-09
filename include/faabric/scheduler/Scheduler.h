@@ -47,6 +47,12 @@ class BatchQueue
     std::string userFuncPar;
     long lastTime;
     std::queue<std::shared_ptr<faabric::Message>> batchQueue;
+
+    // Attributes for partitioned stateful
+    int lockVersion;
+    int rangeStart;
+    int rangeEnd;
+
     void insertMsg(std::shared_ptr<faabric::Message> msg)
     {
         // If the queue is empty, which means insert the first msg, reset the
@@ -162,6 +168,50 @@ class Scheduler
 
     int executeBatchsize;
 
+    // ---- Second Tier Partition ----
+    // It must be same as functionstate.h
+    int hashGranularity = 100;
+
+    // The Interval to repartition local partitioned state.
+    long repartitionInterval = 10000;
+
+    // TODO - integration of maps into one class.
+    // MAP<FunctionName, RecordTime(Millis)>
+    std::map<std::string, long> partitionTimeMap;
+
+    // Statistic actual batching size
+    std::map<std::string, std::vector<int>> executeSizeMap;
+
+    // Statistic waiting batching size
+    std::map<std::string, std::vector<int>> waitingBatchSizeMap;
+
+    std::map<std::string, int> localParVersionMap;
+
+    // MAP<FunctionName, vector of hurdles>
+    std::map<std::string, std::vector<std::pair<int, int>>> hashPartitionedMap;
+
+    // MAP<FunctionName, lookupTable>
+    std::map<std::string, std::vector<int>> lookupTableMap;
+
+    // MAP<FunctionName, <Hash, Count>>
+    std::map<std::string, std::map<size_t, int>> hashDistributionMap;
+
+    // FuncStr is usr/func/par.
+    void logStatistics(const std::string& funcStr,
+                       int newReqSize,
+                       int waitingBatchSize);
+
+    std::pair<double, double> getAverageStatistics(const std::string& funcStr);
+
+    void initPartitionFunc(const std::string& user,
+                           const std::string& func,
+                           int32_t parallelismId);
+
+    int repartitionFunc(const std::string& user,
+                        const std::string& func,
+                        int32_t parallelismId);
+
+    void updateLookupTable(std::string functionPar);
     // ---- Executors ----
     std::unordered_map<
       std::string,

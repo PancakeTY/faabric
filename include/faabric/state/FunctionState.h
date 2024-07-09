@@ -4,6 +4,7 @@
 #include <faabric/state/FunctionStateMetrics.h>
 #include <faabric/state/FunctionStateRegistry.h>
 #include <faabric/state/StateKeyValue.h>
+#include <faabric/util/locks.h>
 #include <map>
 #include <semaphore>
 #include <set>
@@ -69,11 +70,20 @@ class FunctionState
     void addTempParState(const uint8_t* buffer, size_t length);
     bool combineParState();
 
+    // Local-Tier Parition State
+    void acquireRange(int version, int start, int end);
+    void releaseRange(int version, int start, int end);
+    std::vector<uint8_t> readPartitionState(std::set<std::string>& keys);
+    int readPartitionStateSize(std::set<std::string>& keys);
+    void writePartitionState(std::vector<uint8_t>& states);
+
+    faabric::util::RangeLock::LockInfo getLockInfo();
+
     /***
      * Fucntions related to the metrics
      */
     std::map<std::string, int> getMetrics();
-    
+
     const std::string user;
     const std::string function;
     // the default parallelism ID is 0
@@ -88,6 +98,14 @@ class FunctionState
     // TODO - the order to gain sem is not guarenteded. How to solve thread
     // starvation.
     std::counting_semaphore<1> sem;
+
+    // It must be same as scheduler.h
+    int hashGranularity = 100;
+    // For partitioned state, we use range lock
+    faabric::util::RangeLock rangeLock;
+
+    std::map<std::string, std::vector<uint8_t>> paritionedStateMap;
+
     size_t stateSize;
     FunctionStateRegistry& stateRegistry;
     // The host IP is the local IP

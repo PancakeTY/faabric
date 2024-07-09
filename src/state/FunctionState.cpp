@@ -21,6 +21,7 @@ FunctionState::FunctionState(const std::string& userIn,
   , function(functionIn)
   , parallelismId(parallelismIdIn)
   , sem(1)
+  , rangeLock(0, hashGranularity-1)
   , stateSize(stateSizeIn)
   , stateRegistry(getFunctionStateRegistry())
   , hostIp(hostIpIn)
@@ -481,6 +482,48 @@ uint8_t* FunctionState::getChunk(long offset, long len)
     return BYTES(sharedMemory) + offset;
 }
 
+void FunctionState::acquireRange(int version, int start, int end)
+{
+    rangeLock.acquire(version, start, end);
+}
+
+void FunctionState::releaseRange(int version, int start, int end)
+{
+    rangeLock.release(version, start, end);
+}
+
+faabric::util::RangeLock::LockInfo FunctionState::getLockInfo()
+{
+    return rangeLock.getInfo();
+}
+
+std::vector<uint8_t> FunctionState::readPartitionState(
+  std::set<std::string>& keys)
+{
+    std::map<std::string, std::vector<uint8_t>> filteredMap;
+    for (const auto& key : keys) {
+        auto it = paritionedStateMap.find(key);
+        if (it != paritionedStateMap.end()) {
+            filteredMap.emplace(it->first, it->second);
+        }
+    }
+    auto stateVec = faabric::util::serializeParState(filteredMap);
+    return stateVec;
+}
+
+int FunctionState::readPartitionStateSize(std::set<std::string>& keys)
+{
+    return readPartitionState(keys).size();
+}
+
+void FunctionState::writePartitionState(std::vector<uint8_t>& states)
+{
+    auto stateMap = faabric::util::deserializeParState(states);
+    for (auto& [key, value] : stateMap) {
+        paritionedStateMap[key] = value;
+    }
+}
+
 std::map<std::string, std::vector<uint8_t>> FunctionState::getStateMap()
 {
     if (stateSize == 0 || sharedMemory == nullptr) {
@@ -630,7 +673,8 @@ std::map<std::string, int> FunctionState::getMetrics()
     metricsResult["lockBlockTime"] = metrics.lockBlockTimeQueue.average();
     metricsResult["lockHoldTime"] = metrics.lockHoldTimeQueue.average();
     // Print the metrics
-    // SPDLOG_DEBUG("Metrics for {}/{}-{}: lockBlockTime {} µs lockHoldTime {} µs",
+    // SPDLOG_DEBUG("Metrics for {}/{}-{}: lockBlockTime {} µs lockHoldTime {}
+    // µs",
     //              user,
     //              function,
     //              parallelismId,

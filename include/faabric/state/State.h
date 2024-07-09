@@ -57,6 +57,32 @@ class State
 
     size_t getKVCount();
 
+    std::shared_ptr<FunctionState> doGetFunctionState(const std::string& user,
+                                                      const std::string& func,
+                                                      int32_t parallelismId);
+
+    size_t getParFuncStateSizeLock(const std::string& user,
+                                   const std::string& func,
+                                   int32_t parallelismId,
+                                   int version,
+                                   int start,
+                                   int end,
+                                   std::set<std::string>& keys);
+
+    void readParFuncState(const std::string& user,
+                          const std::string& func,
+                          int32_t parallelismId,
+                          char* buffer,
+                          std::set<std::string>& keys);
+
+    void writeParFuncStateUnlock(const std::string& user,
+                                 const std::string& func,
+                                 int32_t parallelismId,
+                                 int version,
+                                 int start,
+                                 int end,
+                                 std::vector<uint8_t>& data);
+
     std::string getThisIP();
 
     // The folowing function is designed for Function State

@@ -222,6 +222,77 @@ size_t State::getFunctionStateSize(const std::string& user,
       user, func, parallelismId, thisIP, lock);
 }
 
+std::shared_ptr<FunctionState> State::doGetFunctionState(
+  const std::string& user,
+  const std::string& func,
+  int32_t parallelismId)
+{
+    if (user.empty() || func.empty()) {
+        throw std::runtime_error("Attempting to access state with empty user");
+    }
+
+    std::string lookupKey =
+      faabric::util::keyForFunction(user, func, parallelismId);
+
+    std::shared_ptr<FunctionState> targetFs = nullptr;
+    // See if we have the value locally. Only shared lock will be used here
+    {
+        faabric::util::SharedLock sharedLock(fsmapMutex);
+        if (fsMap.count(lookupKey) > 0 && fsMap[lookupKey]->isMaster) {
+            targetFs = fsMap[lookupKey];
+        }
+    }
+    // We don't want hold the fsMap lock when trying acquiring the lock for the
+    // function state. DeadLock might happens.
+    if (targetFs == nullptr) {
+        SPDLOG_ERROR("Function state {} not found locally", lookupKey);
+        throw std::runtime_error("Function state not found locally");
+    }
+
+    return targetFs;
+}
+
+size_t State::getParFuncStateSizeLock(const std::string& user,
+                                      const std::string& func,
+                                      int32_t parallelismId,
+                                      int version,
+                                      int start,
+                                      int end,
+                                      std::set<std::string>& keys)
+{
+    auto targetFs = doGetFunctionState(user, func, parallelismId);
+    targetFs->acquireRange(version, start, end);
+    return targetFs->readPartitionStateSize(keys);
+}
+
+void State::readParFuncState(const std::string& user,
+                             const std::string& func,
+                             int32_t parallelismId,
+                             char* buffer,
+                             std::set<std::string>& keys)
+{
+    auto targetFs = doGetFunctionState(user, func, parallelismId);
+
+    auto stateVec = targetFs->readPartitionState(keys);
+    // Copy it to the buffer
+    size_t stateLength = stateVec.size();
+    std::copy(stateVec.data(), stateVec.data() + stateLength, buffer);
+}
+
+void State::writeParFuncStateUnlock(const std::string& user,
+                                    const std::string& func,
+                                    int32_t parallelismId,
+                                    int version,
+                                    int start,
+                                    int end,
+                                    std::vector<uint8_t>& data)
+{
+    auto targetFs = doGetFunctionState(user, func, parallelismId);
+
+    targetFs->writePartitionState(data);
+    targetFs->releaseRange(version, start, end);
+}
+
 std::shared_ptr<FunctionState> State::getOnlyFS(const std::string& user,
                                                 const std::string& func,
                                                 int32_t parallelismId)
