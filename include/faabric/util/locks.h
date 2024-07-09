@@ -90,6 +90,7 @@ class RangeLock
 
     int rangeMin;
     int rangeMax;
+    // The first version should start from 1
     int currentVersion = 0;
     std::map<int, std::map<std::pair<int, int>, Range>> versionLocks;
     std::mutex globalMutex;
