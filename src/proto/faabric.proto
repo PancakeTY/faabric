@@ -54,6 +54,9 @@ message BatchExecuteRequest {
     // Hint set by the user to hint that this execution should all be in a
     // single host
     bool singleHostHint = 11;
+
+    // This Hint is only used when batching execute requests (used by executor)
+    string lockHint = 12;
 }
 
 message BatchExecuteRequestStatus {
@@ -144,17 +147,20 @@ message Message {
     map<string, string> execGraphDetails = 38;
 
     // State
+    // Message Type : 0 stateless/ 1 function state / 2 partitioned state
+    int32 messageType = 88;
     // Hint the Parallelism Id of this task
-    int64 plannerQueueTime = 90;
-    int64 plannerPopTime = 91;
-    int64 plannerDispatchTime = 92;
-    int64 workerQueueTime = 93;
-    int64 workerPopTime = 94;
+    int64 plannerQueueTime = 89;
+    int64 plannerPopTime = 90;
+    int64 plannerDispatchTime = 91;
+    int64 workerQueueTime = 92;
+    int64 workerPopTime = 93;
     // Time for claiming executor
-    int32 ExecutorPrepareTime = 95;
-    int64 workerExecuteStart = 96;
-    int64 workerExecuteEnd = 97;
-    int32 chainedId = 98;
+    int32 ExecutorPrepareTime = 94;
+    int64 workerExecuteStart = 95;
+    int64 workerExecuteEnd = 96;
+    int32 chainedId = 97;
+    int64 hash = 98;
     int32 parallelismId = 99;
 }
 

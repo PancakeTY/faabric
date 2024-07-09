@@ -26,7 +26,7 @@ Otherwise, it will increase the parallelism and repartition function state
 // We register the function state in the functionStateRegister map.
 void StateAwareScheduler::funcStateInitializer()
 {
-    
+
     maxParallelism = faabric::util::getSystemConfig().maxParallelism;
     // Register the chaining functions in the same topology.
     funcChainedMap["stream_function_source"] = {
@@ -38,6 +38,8 @@ void StateAwareScheduler::funcStateInitializer()
                                                   "stream_wordcount_count" };
 
     // Register the function state
+    // If the function state is partitioned, we need to register the partition
+    // input key and partition state key, otherwise, empty is ok
     funcStateRegMap["stream_function_state"] = std::make_tuple("", "");
     funcStateRegMap["stream_function_parstate"] =
       std::make_tuple("partitionInputKey", "partitionStateKey");
@@ -54,85 +56,6 @@ static std::map<std::string, int> getHostFreqCount(
     }
 
     return hostFreqCount;
-}
-
-// Given a new decision that improves on an old decision (i.e. to migrate), we
-// want to make sure that we minimise the number of migration requests we send.
-// This is, we want to keep as many host-message scheduling in the old decision
-// as possible, and also have the overall locality of the new decision (i.e.
-// the host-message histogram)
-static std::shared_ptr<SchedulingDecision> minimiseNumOfMigrations(
-  std::shared_ptr<SchedulingDecision> newDecision,
-  std::shared_ptr<SchedulingDecision> oldDecision)
-{
-    auto decision = std::make_shared<SchedulingDecision>(oldDecision->appId,
-                                                         oldDecision->groupId);
-
-    // We want to maintain the new decision's host-message histogram
-    auto hostFreqCount = getHostFreqCount(newDecision);
-
-    // Helper function to find the next host in the histogram with slots
-    auto nextHostWithSlots = [&hostFreqCount]() -> std::string {
-        for (auto [ip, slots] : hostFreqCount) {
-            if (slots > 0) {
-                return ip;
-            }
-        }
-
-        // Unreachable (in this context)
-        throw std::runtime_error("No next host with slots found!");
-    };
-
-    assert(newDecision->hosts.size() == oldDecision->hosts.size());
-    for (int i = 0; i < newDecision->hosts.size(); i++) {
-        // If both decisions schedule this message to the same host great, as
-        // we can keep the old scheduling
-        if (newDecision->hosts.at(i) == oldDecision->hosts.at(i) &&
-            hostFreqCount.at(newDecision->hosts.at(i)) > 0) {
-            decision->addMessage(oldDecision->hosts.at(i),
-                                 oldDecision->messageIds.at(i),
-                                 oldDecision->appIdxs.at(i),
-                                 oldDecision->groupIdxs.at(i));
-            hostFreqCount.at(oldDecision->hosts.at(i)) -= 1;
-            continue;
-        }
-
-        // If not, assign the old decision as long as we still can (i.e. as
-        // long as we still have slots in the histogram (note that it could be
-        // that the old host is not in the new histogram at all)
-        if (hostFreqCount.contains(oldDecision->hosts.at(i)) &&
-            hostFreqCount.at(oldDecision->hosts.at(i)) > 0) {
-            decision->addMessage(oldDecision->hosts.at(i),
-                                 oldDecision->messageIds.at(i),
-                                 oldDecision->appIdxs.at(i),
-                                 oldDecision->groupIdxs.at(i));
-            hostFreqCount.at(oldDecision->hosts.at(i)) -= 1;
-            continue;
-        }
-
-        // If we can't assign the host from the old decision, then it means
-        // that that message MUST be migrated, so it doesn't really matter
-        // which of the hosts from the new migration we pick (as the new
-        // decision is optimal in terms of bin-packing), as long as there are
-        // still slots in the histogram
-        auto nextHost = nextHostWithSlots();
-        decision->addMessage(nextHost,
-                             oldDecision->messageIds.at(i),
-                             oldDecision->appIdxs.at(i),
-                             oldDecision->groupIdxs.at(i));
-        hostFreqCount.at(nextHost) -= 1;
-    }
-
-    // Assert that we have preserved the new decision's host-message histogram
-    // (use the pre-processor macro as we assert repeatedly in the loop, so we
-    // want to avoid having an empty loop in non-debug mode)
-#ifndef NDEBUG
-    for (auto [host, freq] : hostFreqCount) {
-        assert(freq == 0);
-    }
-#endif
-
-    return decision;
 }
 
 // For the BinPack scheduler, a decision is better than another one if it spans
@@ -336,12 +259,10 @@ std::vector<Host> StateAwareScheduler::getSortedHosts(
     return sortedHosts;
 }
 
-int StateAwareScheduler::getParallelismIndex(const std::string& userFunction,
-                                             const faabric::Message& msg)
+HashAndParallelismInfo StateAwareScheduler::getHashAndParallelismIndex(
+  const std::string& userFunction,
+  const faabric::Message& msg)
 {
-    if (functionParallelism[userFunction] == 1) {
-        return 0;
-    }
     // For the partitioned stateful. Using key-partitioning.
     if (statePartitionBy.find(userFunction) != statePartitionBy.end()) {
         // get the input KEY.
@@ -360,14 +281,22 @@ int StateAwareScheduler::getParallelismIndex(const std::string& userFunction,
         }
         // Hashing the keyData and set the partition index.
         std::vector<uint8_t> keyDataVec = faabric::util::stringToBytes(keyData);
-        int parallelismIdx = stateHashRing[userFunction]->getNode(keyDataVec);
+        auto hashAndNode =
+          stateHashRing[userFunction]->getHashAndNode(keyDataVec);
+        std::size_t hash = hashAndNode.first;
+        int parallelismIdx = hashAndNode.second;
         functionCounter[userFunction]++;
-        SPDLOG_TRACE(
-          "UserFunction {}'s parallelismIdx {}", userFunction, parallelismIdx);
-        return parallelismIdx;
+        SPDLOG_TRACE("UserFunction {}'s hash {} and parallelismIdx {}",
+                     userFunction,
+                     hash,
+                     parallelismIdx);
+        return { 2, hash, parallelismIdx };
     }
     // Otherwise, use shuffle data-partitioning.
-    return functionCounter[userFunction]++ % functionParallelism[userFunction];
+    return { 1,
+             0,
+             functionCounter[userFunction]++ %
+               functionParallelism[userFunction] };
 }
 
 bool registerStateToHost(const std::string& userFunctionParIdx,
@@ -459,12 +388,18 @@ std::shared_ptr<SchedulingDecision> StateAwareScheduler::scheduleWithoutLock(
                 initializeState(hostMap, userFunc);
             }
             // TODO - get parallelism is not thread safe now
-            int parallelismId =
-              getParallelismIndex(userFunc, req->messages(msgIdx));
+            auto hashAndIndex =
+              getHashAndParallelismIndex(userFunc, req->messages(msgIdx));
+            int messageType = hashAndIndex.messageType;
+            size_t hash = hashAndIndex.hash;
+            int parallelismId = hashAndIndex.parallelismIdx;
             // Register the parallelismIdx to it. It is safe to register there.
             // Even if the Scheduling failed this time, the next scheduling will
             // overwrite it.
-            req->mutable_messages(msgIdx)->set_parallelismid(parallelismId);
+            auto tempMsg = req->mutable_messages(msgIdx);
+            tempMsg->set_messagetype(messageType);
+            tempMsg->set_hash(hash);
+            tempMsg->set_parallelismid(parallelismId);
             std::string userFuncPar =
               userFunc + "_" + std::to_string(parallelismId);
 
@@ -513,88 +448,11 @@ std::shared_ptr<SchedulingDecision> StateAwareScheduler::makeSchedulingDecision(
 
     auto decision = std::make_shared<SchedulingDecision>(req->appid(), 0);
 
-    // Get the sorted list of hosts
-    auto decisionType = getDecisionType(inFlightReqs, req);
-    int numLeftToSchedule = req->messages_size();
+    // Our Methods used scheduleWithoutLock instead of makeschedulingdecision to
+    // get the decision.
 
-    // Round-Robin scheduling
-    for (int msgIdx = 0; msgIdx < req->messages_size(); msgIdx++) {
-        bool roundRobinFlag = true;
-        std::string host = "unknown";
-
-        std::string userFunc =
-          req->messages(msgIdx).user() + "_" + req->messages(msgIdx).function();
-        // It it is a function-state function, we might need to assign it near
-        // the state.
-        if (funcStateRegMap.contains(userFunc)) {
-            // If function-state has not been initialized, initialize it.
-            if (!functionParallelism.contains(userFunc)) {
-                initializeState(hostMap, userFunc);
-            }
-            int parallelismId =
-              getParallelismIndex(userFunc, req->messages(msgIdx));
-            // Register the parallelismIdx to it. It is safe to register there.
-            // Even if the Scheduling failed this time, the next scheduling will
-            // overwrite it.
-            req->mutable_messages(msgIdx)->set_parallelismid(parallelismId);
-            std::string userFuncPar =
-              userFunc + "_" + std::to_string(parallelismId);
-
-            bool unavailableFlag = false;
-            // If stateHost doesn't contains the userFuncPar, use round-robin.
-            if (stateHost.find(userFuncPar) == stateHost.end()) {
-                unavailableFlag = true;
-            }
-            // If host is not available, use round-robin.
-            host = stateHost[userFuncPar];
-            if (hostMap.find(host) == hostMap.end()) {
-                SPDLOG_WARN("Host {} is not disconnected, but the state in "
-                            "stored in here",
-                            host);
-                unavailableFlag = true;
-            }
-            // If the host has no slot, use round-robin.
-            if (numSlotsAvailable(hostMap[host]) <= 0) {
-                unavailableFlag = true;
-            }
-            if (!unavailableFlag) {
-                roundRobinFlag = false;
-            }
-        }
-        // Allocate the request by using round robin.
-        if (roundRobinFlag) {
-            int hostIdx = rbCounter++ % hostMap.size();
-            host = getNthKey(hostMap, hostIdx);
-            // TODO - No, We give unlimited slots to each worker.
-            if (numSlotsAvailable(hostMap[host]) <= 0) {
-                SPDLOG_WARN("Host {} has no available slots", host);
-            }
-        }
-        if (host == "unknown") {
-            throw std::runtime_error("Host is unknown");
-        }
-        decision->addMessage(host, req->messages(msgIdx));
-        numLeftToSchedule--;
-        claimSlots(hostMap[host], 1);
-    }
-
-    // If we still have enough slots to schedule, we are out of slots
-    if (numLeftToSchedule > 0) {
-        return std::make_shared<SchedulingDecision>(NOT_ENOUGH_SLOTS_DECISION);
-    }
-
-    // In case of a DIST_CHANGE decision (i.e. migration), we want to make sure
-    // that the new decision is better than the previous one
-    if (decisionType == DecisionType::DIST_CHANGE) {
-        auto oldDecision = inFlightReqs.at(req->appid()).second;
-        if (isFirstDecisionBetter(decision, oldDecision)) {
-            // If we are sending a better migration, make sure that we minimise
-            // the number of migrations to be done
-            return minimiseNumOfMigrations(decision, oldDecision);
-        }
-
-        return std::make_shared<SchedulingDecision>(DO_NOT_MIGRATE_DECISION);
-    }
+    throw std::runtime_error(
+      "makeSchedulingDecision function Not implemented in StateAwareScheduler");
 
     return decision;
 }

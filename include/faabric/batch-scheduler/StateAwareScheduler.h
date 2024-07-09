@@ -12,6 +12,13 @@
 
 namespace faabric::batch_scheduler {
 
+struct HashAndParallelismInfo
+{
+    int messageType;
+    size_t hash;
+    int parallelismIdx;
+};
+
 class StateAwareScheduler final : public BatchScheduler
 {
   public:
@@ -84,6 +91,7 @@ class StateAwareScheduler final : public BatchScheduler
     // FunctionUser : hashRing
     std::map<std::string, std::shared_ptr<util::ConsistentHashRing>>
       stateHashRing;
+    // Only partitioned stateful function will be registered here.
     // FunctionUser : Input Parition Key
     std::map<std::string, std::string> statePartitionBy;
 
@@ -120,8 +128,13 @@ class StateAwareScheduler final : public BatchScheduler
     // bool registerState(const std::string& userFunction,
     //                    const std::string& host,
     //                    const std::string& partitionBy = "");
-    // return the parallelism index of this function, which is align with state.
-    int getParallelismIndex(const std::string& userFunction,
-                            const faabric::Message& msg);
+    // return the message type, hash and parallelism index of this function,
+    // which is align with state.
+
+    // Message Type : 0 - Stateless, 1 - Stateful, 2 - Paritioned Stateful
+
+    HashAndParallelismInfo getHashAndParallelismIndex(
+      const std::string& userFunction,
+      const faabric::Message& msg);
 };
 }

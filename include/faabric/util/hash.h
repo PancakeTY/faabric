@@ -80,6 +80,18 @@ class ConsistentHashRing
         }
         return it->second;
     }
+
+    std::pair<size_t, int> getHashAndNode(const std::vector<uint8_t>& keyBytes)
+    {
+        std::size_t hash = faabric::util::hashVector(keyBytes);
+        // Print hash
+        // std::cout << "Hash: " << hash << std::endl;
+        auto it = ring.lower_bound(hash);
+        if (it == ring.end()) {
+            it = ring.begin();
+        }
+        return std::make_pair(hash, it->second);
+    }
 };
 
 }
