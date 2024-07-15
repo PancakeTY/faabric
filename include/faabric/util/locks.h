@@ -37,6 +37,26 @@ class FlagWaiter : public std::enable_shared_from_this<FlagWaiter>
     std::atomic<bool> flag;
 };
 
+class IndivLock
+{
+  public:
+    IndivLock()
+      : locked(false)
+    {}
+
+    void acquire();
+
+    void release();
+
+    bool isLocked();
+
+  private:
+    std::mutex mtx;
+    std::condition_variable cv;
+    bool locked;
+    std::queue<std::thread::id> waiting_threads;
+};
+
 /***
  * This Lock is used by Paritioned State to partition the state into ranges and
  * only lock the required ranges.

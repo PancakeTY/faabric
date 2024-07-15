@@ -83,6 +83,24 @@ class State
                                  int end,
                                  std::vector<uint8_t>& data);
 
+    int getIndivFuncStateSizeLock(const std::string& user,
+                                  const std::string& func,
+                                  int32_t parallelismId,
+                                  uint8_t* buffer,
+                                  std::set<std::string>& keys);
+
+    void readIndivFuncState(const std::string& user,
+                            const std::string& func,
+                            int32_t parallelismId,
+                            char* buffer,
+                            int bufferLength,
+                            std::set<std::string>& keys);
+
+    void writeIndivFuncStateUnlock(const std::string& user,
+                                   const std::string& func,
+                                   int32_t parallelismId,
+                                   std::vector<uint8_t>& data);
+
     std::string getThisIP();
 
     // The folowing function is designed for Function State

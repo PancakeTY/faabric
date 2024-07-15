@@ -403,6 +403,11 @@ void Scheduler::executeBatchLazy(
         }
     }
 
+    if (firstMsg->messagetype() != 2)
+    {
+        return;
+    }
+    
     // TODO - When to trigger the partittion
     long currentMillis = faabric::util::getGlobalClock().epochMillis();
     if (currentMillis - partitionTimeMap.at(userFuncPar) <

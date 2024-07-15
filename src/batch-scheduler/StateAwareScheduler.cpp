@@ -45,6 +45,8 @@ void StateAwareScheduler::funcStateInitializer()
       std::make_tuple("partitionInputKey", "partitionStateKey");
     funcStateRegMap["stream_wordcount_count"] =
       std::make_tuple("partitionInputKey", "partitionStateKey");
+    funcStateRegMap["stream_wordcountindiv_count"] =
+      std::make_tuple("partitionInputKey", "partitionStateKey");
 }
 
 static std::map<std::string, int> getHostFreqCount(

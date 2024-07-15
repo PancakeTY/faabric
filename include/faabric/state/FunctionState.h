@@ -77,6 +77,9 @@ class FunctionState
     int readPartitionStateSize(std::set<std::string>& keys);
     void writePartitionState(std::vector<uint8_t>& states);
 
+    int acquireIndivLocks(std::set<std::string>& keys, uint8_t* buffer);
+    void writeIndivStateUnlocks(std::vector<uint8_t>& states);
+
     faabric::util::RangeLock::LockInfo getLockInfo();
 
     /***
@@ -99,10 +102,14 @@ class FunctionState
     // starvation.
     std::counting_semaphore<1> sem;
 
+    std::mutex mx;
+
     // It must be same as scheduler.h
     int hashGranularity = 100;
     // For partitioned state, we use range lock
     faabric::util::RangeLock rangeLock;
+
+    std::map<std::string, std::shared_ptr<faabric::util::IndivLock>> locksMap;
 
     std::map<std::string, std::vector<uint8_t>> paritionedStateMap;
 

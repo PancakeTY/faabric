@@ -4,6 +4,7 @@
 #include <faabric/util/config.h>
 #include <faabric/util/locks.h>
 #include <faabric/util/logging.h>
+#include <faabric/util/serialization.h>
 #include <faabric/util/state.h>
 
 #include <unistd.h>
@@ -293,6 +294,51 @@ void State::writeParFuncStateUnlock(const std::string& user,
     targetFs->releaseRange(version, start, end);
 }
 
+int State::getIndivFuncStateSizeLock(const std::string& user,
+                                     const std::string& func,
+                                     int32_t parallelismId,
+                                     uint8_t* buffer,
+                                     std::set<std::string>& keys)
+{
+    auto targetFs = doGetFunctionState(user, func, parallelismId);
+
+    int size = targetFs->acquireIndivLocks(keys, buffer);
+    return size;
+}
+
+void State::readIndivFuncState(const std::string& user,
+                               const std::string& func,
+                               int32_t parallelismId,
+                               char* buffer,
+                               int bufferLength,
+                               std::set<std::string>& keys)
+{
+    auto targetFs = doGetFunctionState(user, func, parallelismId);
+
+    // Print all the keys
+    SPDLOG_DEBUG("Reading partition state for function {} with keys:", func);
+
+    auto stateVec = targetFs->readPartitionState(keys);
+    // Copy it to the buffer
+    size_t stateLength = stateVec.size();
+    if (stateLength != bufferLength) {
+        SPDLOG_ERROR("Buffer length {} does not match state length {}",
+                     bufferLength,
+                     stateLength);
+        throw std::runtime_error("Buffer length does not match state length");
+    }
+    std::copy(stateVec.data(), stateVec.data() + stateLength, buffer);
+}
+
+void State::writeIndivFuncStateUnlock(const std::string& user,
+                                      const std::string& func,
+                                      int32_t parallelismId,
+                                      std::vector<uint8_t>& data)
+{
+    auto targetFs = doGetFunctionState(user, func, parallelismId);
+
+    targetFs->writeIndivStateUnlocks(data);
+}
 std::shared_ptr<FunctionState> State::getOnlyFS(const std::string& user,
                                                 const std::string& func,
                                                 int32_t parallelismId)

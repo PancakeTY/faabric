@@ -35,6 +35,38 @@ void FlagWaiter::setFlag(bool value)
     cv.notify_all();
 }
 
+void IndivLock::acquire()
+{
+    std::unique_lock<std::mutex> lk(mtx);
+    if (locked) {
+        // Add the thread to the waiting queue and wait until notified
+        waiting_threads.push(std::this_thread::get_id());
+        cv.wait(lk, [this]() {
+            return !locked &&
+                   waiting_threads.front() == std::this_thread::get_id();
+        });
+        waiting_threads.pop();
+    }
+    // Lock is acquired
+    locked = true;
+}
+
+void IndivLock::release()
+{
+    std::unique_lock<std::mutex> lk(mtx);
+    locked = false;
+    if (!waiting_threads.empty()) {
+        // Notify the next waiting thread
+        cv.notify_all();
+    }
+}
+
+bool IndivLock::isLocked()
+{
+    std::lock_guard<std::mutex> lk(mtx);
+    return locked;
+}
+
 RangeLock::RangeLock(int begin, int end)
 {
     rangeMin = begin;
@@ -184,7 +216,8 @@ void RangeLock::release(int version, int begin, int end)
     if (version == currentVersion - 1) {
         if (!releaseRangeLock.waitQueue.empty()) {
             // Try to notify the next waiting thread of the same lock
-            std::condition_variable* nextCv = releaseRangeLock.waitQueue.top().cv;
+            std::condition_variable* nextCv =
+              releaseRangeLock.waitQueue.top().cv;
             releaseRangeLock.waitQueue.pop();
             nextCv->notify_one();
         } else {
@@ -197,7 +230,8 @@ void RangeLock::release(int version, int begin, int end)
                           "The overlap locks are locked both");
                     }
                     if (!currLock.waitQueue.empty()) {
-                        std::unique_lock<std::mutex> tempLockGurad(currLock.mtx);
+                        std::unique_lock<std::mutex> tempLockGurad(
+                          currLock.mtx);
                         auto nextCv = currLock.waitQueue.top().cv;
                         currLock.waitQueue.pop();
                         nextCv->notify_one();
@@ -220,7 +254,8 @@ void RangeLock::release(int version, int begin, int end)
                           "The overlap locks are locked both");
                     }
                     if (!prevLock.waitQueue.empty()) {
-                        std::unique_lock<std::mutex> tempLockGurad(prevLock.mtx);
+                        std::unique_lock<std::mutex> tempLockGurad(
+                          prevLock.mtx);
                         auto nextCv = prevLock.waitQueue.top().cv;
                         prevLock.waitQueue.pop();
                         nextCv->notify_one();

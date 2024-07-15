@@ -21,7 +21,7 @@ FunctionState::FunctionState(const std::string& userIn,
   , function(functionIn)
   , parallelismId(parallelismIdIn)
   , sem(1)
-  , rangeLock(0, hashGranularity-1)
+  , rangeLock(0, hashGranularity - 1)
   , stateSize(stateSizeIn)
   , stateRegistry(getFunctionStateRegistry())
   , hostIp(hostIpIn)
@@ -521,6 +521,80 @@ void FunctionState::writePartitionState(std::vector<uint8_t>& states)
     auto stateMap = faabric::util::deserializeParState(states);
     for (auto& [key, value] : stateMap) {
         paritionedStateMap[key] = value;
+    }
+}
+
+int FunctionState::acquireIndivLocks(std::set<std::string>& keys,
+                                     uint8_t* buffer)
+{
+    std::map<std::string, std::vector<uint8_t>> filteredMap;
+    faabric::util::UniqueLock stateLock(mx);
+    std::string result;
+    for (const auto& key : keys) {
+        // If this key has never been accessed, we need to create a lock for it
+        if (!locksMap.contains(key)) {
+            locksMap[key] = std::make_shared<faabric::util::IndivLock>();
+            locksMap[key]->acquire();
+            if (!result.empty()) {
+                result += "|";
+            }
+            result += key;
+            continue;
+        }
+        // It this key has already been accessed
+        // We ignore the key if it is already locked
+        if (locksMap[key]->isLocked()) {
+            continue;
+        }
+        // If it is unlocked, we lock it
+        locksMap[key]->acquire();
+        // If it's lock is created and released without writing data, throw
+        // errors.
+        if (!paritionedStateMap.contains(key)) {
+            SPDLOG_ERROR("Key {} is unlocked before writing", key);
+            throw std::runtime_error("Key is unlocked before writing");
+        }
+        filteredMap.emplace(key, paritionedStateMap[key]);
+        if (!result.empty()) {
+            result += "|";
+        }
+        result += key;
+    }
+
+    // If the filterred map is empty, lock one value.
+    if (result.empty()) {
+        std::set<std::string>::iterator it = keys.begin();
+        std::string firstValue = *it;
+        stateLock.unlock();
+        locksMap[firstValue]->acquire();
+        stateLock.lock();
+        filteredMap.emplace(firstValue, paritionedStateMap[firstValue]);
+        result += firstValue;
+    }
+
+    std::vector<uint8_t> resultVec(result.begin(), result.end());
+    resultVec.push_back('\0');
+
+    // Step 2: Create the vector and copy the locked data into it
+    std::copy(resultVec.data(),
+              resultVec.data() + resultVec.size(),
+              reinterpret_cast<uint8_t*>(buffer));
+
+    // Step3: Calculate the Vec Size
+    auto stateVec = faabric::util::serializeParState(filteredMap);
+    return stateVec.size();
+}
+
+void FunctionState::writeIndivStateUnlocks(std::vector<uint8_t>& states)
+{
+    auto stateMap = faabric::util::deserializeParState(states);
+    for (auto& [key, value] : stateMap) {
+        paritionedStateMap[key] = value;
+    }
+    // Get the mx and unlock
+    faabric::util::UniqueLock stateLock(mx);
+    for (auto& [key, value] : stateMap) {
+        locksMap[key]->release();
     }
 }
 
