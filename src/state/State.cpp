@@ -298,11 +298,12 @@ int State::getIndivFuncStateSizeLock(const std::string& user,
                                      const std::string& func,
                                      int32_t parallelismId,
                                      uint8_t* buffer,
-                                     std::set<std::string>& keys)
+                                     std::set<std::string>& keys,
+                                     int acquireTimes)
 {
     auto targetFs = doGetFunctionState(user, func, parallelismId);
 
-    int size = targetFs->acquireIndivLocks(keys, buffer);
+    int size = targetFs->acquireIndivLocks(keys, buffer, acquireTimes);
     return size;
 }
 
@@ -314,9 +315,6 @@ void State::readIndivFuncState(const std::string& user,
                                std::set<std::string>& keys)
 {
     auto targetFs = doGetFunctionState(user, func, parallelismId);
-
-    // Print all the keys
-    SPDLOG_DEBUG("Reading partition state for function {} with keys:", func);
 
     auto stateVec = targetFs->readPartitionState(keys);
     // Copy it to the buffer
@@ -339,6 +337,7 @@ void State::writeIndivFuncStateUnlock(const std::string& user,
 
     targetFs->writeIndivStateUnlocks(data);
 }
+
 std::shared_ptr<FunctionState> State::getOnlyFS(const std::string& user,
                                                 const std::string& func,
                                                 int32_t parallelismId)

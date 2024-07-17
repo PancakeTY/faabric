@@ -15,6 +15,30 @@
 
 namespace faabric::state {
 
+class IndivState
+{
+  public:
+    explicit IndivState(bool locked); // Parameterized constructor
+
+    bool isLocked() const;
+    void acquireLock();
+    void releaseLock();
+
+    const std::vector<uint8_t>& getState() const;
+    void setState(const std::vector<uint8_t>& newState);
+
+    int getRegisterNum() const;
+    int getWaitingNum() const;
+    int incrementRegisterNum();
+
+  private:
+    std::shared_ptr<faabric::util::IndivLock> lock;
+    std::vector<uint8_t> state;
+    std::atomic<int> registerNum;
+    std::atomic<int> waitingNum;
+    mutable std::mutex stateMutex; // Mutex to protect the state vector
+};
+
 class FunctionState
 {
   public:
@@ -77,7 +101,9 @@ class FunctionState
     int readPartitionStateSize(std::set<std::string>& keys);
     void writePartitionState(std::vector<uint8_t>& states);
 
-    int acquireIndivLocks(std::set<std::string>& keys, uint8_t* buffer);
+    int acquireIndivLocks(std::set<std::string>& keys,
+                          uint8_t* buffer,
+                          int acquireTimes);
     void writeIndivStateUnlocks(std::vector<uint8_t>& states);
 
     faabric::util::RangeLock::LockInfo getLockInfo();
@@ -109,10 +135,9 @@ class FunctionState
     // For partitioned state, we use range lock
     faabric::util::RangeLock rangeLock;
 
-    std::map<std::string, std::shared_ptr<faabric::util::IndivLock>> locksMap;
+    std::map<std::string, IndivState> indivStateMap;
 
-    std::map<std::string, std::vector<uint8_t>> paritionedStateMap;
-
+    std::string doSelectLock(std::set<std::string>& keys);
     size_t stateSize;
     FunctionStateRegistry& stateRegistry;
     // The host IP is the local IP

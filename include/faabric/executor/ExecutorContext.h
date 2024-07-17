@@ -66,10 +66,12 @@ class ExecutorContext
     }
 
     int getMsgIdx() { return msgIdx; }
+    int incrementLockAcquireTimes() { return ++lockAcquireTimes; }
 
   private:
     Executor* executor = nullptr;
     std::shared_ptr<faabric::BatchExecuteRequest> req = nullptr;
     int msgIdx = 0;
+    int lockAcquireTimes = 0;
 };
 }

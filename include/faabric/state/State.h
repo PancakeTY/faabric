@@ -87,7 +87,7 @@ class State
                                   const std::string& func,
                                   int32_t parallelismId,
                                   uint8_t* buffer,
-                                  std::set<std::string>& keys);
+                                  std::set<std::string>& keys, int acquireTimes);
 
     void readIndivFuncState(const std::string& user,
                             const std::string& func,
