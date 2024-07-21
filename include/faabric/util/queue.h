@@ -1,5 +1,6 @@
 #pragma once
 
+#include <faabric/proto/faabric.pb.h>
 #include <faabric/util/exception.h>
 #include <faabric/util/locks.h>
 #include <faabric/util/logging.h>
@@ -7,10 +8,12 @@
 #include <condition_variable>
 #include <deque>
 #include <iostream>
+#include <map>
 #include <mutex>
 #include <numeric>
 #include <queue>
 #include <readerwriterqueue/readerwritercircularbuffer.h>
+#include <vector>
 
 #define DEFAULT_QUEUE_TIMEOUT_MS 5000
 #define DEFAULT_QUEUE_SIZE 1024
@@ -331,6 +334,124 @@ class ThreadSafeQueue
     std::queue<T> m_queue;
     mutable std::mutex m_mutex;
     std::condition_variable m_cond_var;
+};
+
+class PartitionedStateMessageQueue
+{
+  public:
+    PartitionedStateMessageQueue(int functionReplica, int batchSize)
+      : functionReplica(functionReplica)
+      , batchSize(batchSize){};
+
+    void addMessage(size_t hash, std::shared_ptr<faabric::Message> msg)
+    {
+        // Record the message inside the queue and index table.
+        messagesQueue[enqueueBatchNum][hash].push(msg);
+        hashToBatchNumTable[hash].push(enqueueBatchNum);
+
+        messagesCount++;
+        enqueueBatchSize++;
+        if (enqueueBatchSize == batchSize) {
+            enqueueBatchNum++;
+            enqueueBatchSize = 0;
+        }
+    }
+
+    std::vector<std::shared_ptr<faabric::Message>> getMessages()
+    {
+        std::vector<std::shared_ptr<faabric::Message>> returnMessages;
+        if (messagesCount == 0) {
+            return returnMessages;
+        }
+        bool firstMsg = true;
+        size_t previousHash;
+
+        while (returnMessages.size() < batchSize) {
+            std::shared_ptr<faabric::Message> currentMessage = nullptr;
+            int dequeueBatchNum = messagesQueue.begin()->first;
+
+            int currentHash = 0;
+            int currentEnqueueBatchNum = 0;
+
+            // Judge if the next message shared the same hash with the previous
+            bool sameHash = false;
+            // If it's not the first message and the message with the same hash
+            // is in the batchNum range. Get the message with the same hash.
+            if (!firstMsg && !hashToBatchNumTable[previousHash].empty() &&
+                hashToBatchNumTable[previousHash].front() - dequeueBatchNum <
+                  functionReplica) {
+                sameHash = true;
+            }
+            firstMsg = false;
+
+            // Get the current message.
+            if (!sameHash) {
+                currentEnqueueBatchNum = messagesQueue.begin()->first;
+                currentHash =
+                  messagesQueue[currentEnqueueBatchNum].begin()->first;
+                currentMessage =
+                  messagesQueue[currentEnqueueBatchNum][currentHash].front();
+            }
+            // If other messages shared with the same hash with in the batchNum
+            // range, get them all.
+            else {
+                currentEnqueueBatchNum =
+                  hashToBatchNumTable[previousHash].front();
+                currentHash = previousHash;
+                currentMessage =
+                  messagesQueue[currentEnqueueBatchNum][previousHash].front();
+            }
+
+            // Clear the Queue and Table.
+            messagesQueue[currentEnqueueBatchNum][currentHash].pop();
+            if (messagesQueue[currentEnqueueBatchNum][currentHash].empty()) {
+                messagesQueue[currentEnqueueBatchNum].erase(currentHash);
+            }
+            if (messagesQueue[currentEnqueueBatchNum].empty()) {
+                messagesQueue.erase(currentEnqueueBatchNum);
+            }
+            hashToBatchNumTable[currentHash].pop();
+
+            messagesCount--;
+            returnMessages.push_back(currentMessage);
+
+            if (messagesCount == 0) {
+                // If the message queue cannot reach the batchSize, update the
+                // enqueueInfo. Happens when limiation time is reached, but
+                // queue is not full.
+                if (returnMessages.size() < batchSize) {
+                    enqueueBatchNum++;
+                    enqueueBatchSize = 0;
+                }
+                break;
+            }
+
+            previousHash = currentHash;
+        }
+
+        return returnMessages;
+    }
+
+    int getMessagesCount() { return messagesCount; }
+
+  private:
+    // Const Variables
+    const int functionReplica;
+    const int batchSize;
+
+    // MAP<BatchNum, MAP<Hash, Messages>>
+    std::map<int,
+             std::map<size_t, std::queue<std::shared_ptr<faabric::Message>>>>
+      messagesQueue;
+    // MAP<Hash, QUEUE<BatchNum>>
+    std::map<size_t, std::queue<int>> hashToBatchNumTable;
+
+    // The batchNum used and planned for enqueue Messages.
+    int enqueueBatchNum = 0;
+    int enqueueBatchSize = 0;
+
+    // The number of messages in the queue.
+    int messagesCount = 0;
 };
 
 }
