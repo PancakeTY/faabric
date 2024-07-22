@@ -50,6 +50,9 @@ class FunctionCallClient : public faabric::transport::MessageEndpointClient
 
     void resetMaxReplicas(
       std::shared_ptr<faabric::planner::MaxReplicasRequest> req);
+
+    void resetParameter(
+      std::shared_ptr<faabric::planner::ResetStreamParameterRequest> req);
 };
 
 // -----------------------------------

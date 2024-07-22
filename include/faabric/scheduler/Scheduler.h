@@ -90,6 +90,13 @@ class Scheduler
                               BatchQueue& waitingBatch,
                               faabric::util::FullLock& lock);
 
+    void executeBatchForPartitionQueue(
+      const std::string& userFuncPar,
+      faabric::util::PartitionedStateMessageQueue& waitingBatch,
+      faabric::util::FullLock& lock);
+
+    void resetParameter(std::string key, int32_t value);
+    
     void resetBatchsize(int32_t newSize);
 
     void reset();
@@ -166,52 +173,10 @@ class Scheduler
 
     int maxReplicas = 8;
 
+    bool isRepartition = true;
+
     int executeBatchsize;
 
-    // ---- Second Tier Partition ----
-    // It must be same as functionstate.h
-    int hashGranularity = 100;
-
-    // The Interval to repartition local partitioned state.
-    long repartitionInterval = 10000;
-
-    // TODO - integration of maps into one class.
-    // MAP<FunctionName, RecordTime(Millis)>
-    std::map<std::string, long> partitionTimeMap;
-
-    // Statistic actual batching size
-    std::map<std::string, std::vector<int>> executeSizeMap;
-
-    // Statistic waiting batching size
-    std::map<std::string, std::vector<int>> waitingBatchSizeMap;
-
-    std::map<std::string, int> localParVersionMap;
-
-    // MAP<FunctionName, vector of hurdles>
-    std::map<std::string, std::vector<std::pair<int, int>>> hashPartitionedMap;
-
-    // MAP<FunctionName, lookupTable>
-    std::map<std::string, std::vector<int>> lookupTableMap;
-
-    // MAP<FunctionName, <Hash, Count>>
-    std::map<std::string, std::map<size_t, int>> hashDistributionMap;
-
-    // FuncStr is usr/func/par.
-    void logStatistics(const std::string& funcStr,
-                       int newReqSize,
-                       int waitingBatchSize);
-
-    std::pair<double, double> getAverageStatistics(const std::string& funcStr);
-
-    void initPartitionFunc(const std::string& user,
-                           const std::string& func,
-                           int32_t parallelismId);
-
-    int repartitionFunc(const std::string& user,
-                        const std::string& func,
-                        int32_t parallelismId);
-
-    void updateLookupTable(std::string functionPar);
     // ---- Executors ----
     std::unordered_map<
       std::string,
@@ -244,7 +209,10 @@ class Scheduler
 
     // A queue stores the uninvoked requests: MAP<UserFuncPar, Queue>
     std::map<std::string, BatchQueue> waitingQueues;
-
+    // A queue stores the uninvoked partitioned function requests:
+    // MAP<UserFuncPar, Queue>,
+    std::map<std::string, faabric::util::PartitionedStateMessageQueue>
+      partitionedWaitingQueues;
     // ---- Batch Execution ----
     std::thread batchTimerThread;
     bool stopBatchTimer = false;

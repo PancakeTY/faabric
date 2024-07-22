@@ -120,6 +120,12 @@ void FunctionCallClient::resetMaxReplicas(
     asyncSend(faabric::scheduler::FunctionCalls::ResetMaxReplicas, req.get());
 }
 
+void FunctionCallClient::resetParameter(
+  std::shared_ptr<faabric::planner::ResetStreamParameterRequest> req)
+{
+    asyncSend(faabric::scheduler::FunctionCalls::ResetParameter, req.get());
+}
+
 // -----------------------------------
 // Static setter/getters
 // -----------------------------------

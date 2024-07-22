@@ -42,6 +42,10 @@ void FunctionCallServer::doAsyncRecv(transport::Message& message)
             recvResetMaxReplicas(message.udata());
             break;
         }
+        case faabric::scheduler::FunctionCalls::ResetParameter: {
+            recvResetParameter(message.udata());
+            break;
+        }
         default: {
             throw std::runtime_error(
               fmt::format("Unrecognized async call header: {}", header));
@@ -141,6 +145,22 @@ void FunctionCallServer::recvResetMaxReplicas(std::span<const uint8_t> buffer)
     int32_t maxReplicas = parsedMsg.maxnum();
     SPDLOG_INFO("Resetting max replicas to {}", maxReplicas);
     faabric::scheduler::getScheduler().resetMaxReplicas(maxReplicas);
+}
+
+void FunctionCallServer::recvResetParameter(std::span<const uint8_t> buffer)
+{
+    PARSE_MSG(faabric::planner::ResetStreamParameterRequest,
+              buffer.data(),
+              buffer.size());
+    std::string key = parsedMsg.parameter();
+    int32_t value = parsedMsg.value();
+    SPDLOG_INFO("FunctionCall Server Resetting parameter {} to {}", key, value);
+    if (key == "is_repartition") {
+        faabric::scheduler::getScheduler().resetParameter(key, value);
+    } else {
+        throw std::runtime_error(
+          fmt::format("Unrecognized parameter key: {}", key));
+    }
 }
 
 }

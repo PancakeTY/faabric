@@ -10,5 +10,6 @@ enum FunctionCalls
     ExecuteFunctionsLazy = 4,
     ResetBatchsize = 5,
     ResetMaxReplicas = 6,
+    ResetParameter = 7,
 };
 }

@@ -113,7 +113,9 @@ class Planner
     bool resetBatchsize(int32_t newSize);
 
     bool resetMaxReplicas(int32_t newMaxReplicas);
-    
+
+    bool resetParameter(const std::string& key, const int32_t value);
+
     // ----------
     // Metrics public API
     // ----------

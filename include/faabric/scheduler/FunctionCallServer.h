@@ -32,5 +32,7 @@ class FunctionCallServer final
     void recvResetBatchsize(std::span<const uint8_t> buffer);
 
     void recvResetMaxReplicas(std::span<const uint8_t> buffer);
+
+    void recvResetParameter(std::span<const uint8_t> buffer);
 };
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <faabric/proto/faabric.pb.h>
+#include <faabric/util/clock.h>
 #include <faabric/util/exception.h>
 #include <faabric/util/locks.h>
 #include <faabric/util/logging.h>
@@ -341,10 +342,29 @@ class PartitionedStateMessageQueue
   public:
     PartitionedStateMessageQueue(int functionReplica, int batchSize)
       : functionReplica(functionReplica)
-      , batchSize(batchSize){};
+      , batchSize(batchSize)
+    {
+        // Last time is the lastest time bewtween earliest insert time and the
+        // lastest invoke time.
+        lastTime = faabric::util::getGlobalClock().epochMillis();
+    };
+
+    std::shared_ptr<faabric::Message> front()
+    {
+        if (messagesCount == 0) {
+            throw std::runtime_error("Queue is empty");
+        }
+
+        return messagesQueue.begin()->second.begin()->second.front();
+    }
 
     void addMessage(size_t hash, std::shared_ptr<faabric::Message> msg)
     {
+        // If the queue is empty, which means insert the first msg, reset the
+        // invoke time.
+        if (messagesCount == 0) {
+            resetlastTime();
+        }
         // Record the message inside the queue and index table.
         messagesQueue[enqueueBatchNum][hash].push(msg);
         hashToBatchNumTable[hash].push(enqueueBatchNum);
@@ -370,7 +390,7 @@ class PartitionedStateMessageQueue
             std::shared_ptr<faabric::Message> currentMessage = nullptr;
             int dequeueBatchNum = messagesQueue.begin()->first;
 
-            int currentHash = 0;
+            size_t currentHash = 0;
             int currentEnqueueBatchNum = 0;
 
             // Judge if the next message shared the same hash with the previous
@@ -434,10 +454,20 @@ class PartitionedStateMessageQueue
 
     int getMessagesCount() { return messagesCount; }
 
+    int getTimeInterval()
+    {
+        return faabric::util::getGlobalClock().epochMillis() - lastTime;
+    }
+    void resetlastTime()
+    {
+        lastTime = faabric::util::getGlobalClock().epochMillis();
+    }
+
   private:
     // Const Variables
     const int functionReplica;
     const int batchSize;
+    long lastTime;
 
     // MAP<BatchNum, MAP<Hash, Messages>>
     std::map<int,

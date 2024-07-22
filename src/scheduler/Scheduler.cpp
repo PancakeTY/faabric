@@ -162,15 +162,7 @@ void Scheduler::reset()
     reaperThread.start(conf.reaperIntervalSeconds);
 
     waitingQueues.clear();
-
-    // Reset the statistics for second tier partition
-    partitionTimeMap.clear();
-    executeSizeMap.clear();
-    waitingBatchSizeMap.clear();
-    localParVersionMap.clear();
-    hashPartitionedMap.clear();
-    lookupTableMap.clear();
-    hashDistributionMap.clear();
+    partitionedWaitingQueues.clear();
 }
 
 void Scheduler::shutdown()
@@ -370,58 +362,21 @@ void Scheduler::executeBatchLazy(
         // Statistic the Hashing key distribution.
         size_t hash = tempMsg->hash();
         int messageType = tempMsg->messagetype();
-        if (messageType == 2) {
-            // Second tier partitioning here
-            size_t dividedHash = hash % hashGranularity;
-            hashDistributionMap[userFuncPar][dividedHash]++;
-            // Get the second tier partitioning
-            // Initialize if not exists
-            if (!hashPartitionedMap.contains(userFuncPar)) {
-                initPartitionFunc(firstMsg->user(),
-                                  firstMsg->function(),
-                                  firstMsg->parallelismid());
+        if (isRepartition && messageType == 2) {
+            if (!partitionedWaitingQueues.contains(waitingQueueName)) {
+                faabric::util::PartitionedStateMessageQueue tempWaitingQueue(
+                  maxReplicas, executeBatchsize);
+                partitionedWaitingQueues.emplace(waitingQueueName,
+                                                 tempWaitingQueue);
             }
-            // Get the second tier partitioning
-            int localPartition = lookupTableMap[userFuncPar][dividedHash];
-            int lockVersion = localParVersionMap[userFuncPar];
-            waitingQueueName = waitingQueueName + "/" +
-                               std::to_string(lockVersion) + "/" +
-                               std::to_string(localPartition);
-            auto [iterator, inserted] =
-              waitingQueues.emplace(waitingQueueName, waitingQueueName);
-            if (inserted) {
-                iterator->second.lockVersion = lockVersion;
-                auto range = hashPartitionedMap[userFuncPar][localPartition];
-                iterator->second.rangeStart = range.first;
-                iterator->second.rangeEnd = range.second;
-            }
-            iterator->second.insertMsg(std::move(tempMsg));
+            partitionedWaitingQueues.at(waitingQueueName)
+              .addMessage(hash, std::move(tempMsg));
         } else {
             auto [iterator, inserted] =
               waitingQueues.emplace(waitingQueueName, waitingQueueName);
             iterator->second.insertMsg(std::move(tempMsg));
         }
     }
-
-    if (firstMsg->messagetype() != 2)
-    {
-        return;
-    }
-    
-    // TODO - When to trigger the partittion
-    long currentMillis = faabric::util::getGlobalClock().epochMillis();
-    if (currentMillis - partitionTimeMap.at(userFuncPar) <
-        repartitionInterval) {
-        return;
-    }
-
-    // TODO - The new partition size
-    // std::string funcStr = faabric::util::funcParToString(*fisrtMsg, false);
-    // int newParitionSize = repartitionFunc(funcStr);
-    // SPDLOG_INFO("Repartition {} to {}", userFuncPar, newParitionSize);
-
-    // TODO - Partition the local tier.
-    // repartitionFunc(userFuncPar);
 }
 
 void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
@@ -467,9 +422,9 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
                          newReq->messages_size());
             // Execute the tasks for Paritioned State
             if (localMsg.messagetype() == 2) {
-                logStatistics(funcStr,
-                              newReq->messages_size(),
-                              waitingBatch.batchQueue.size());
+                // logStatistics(funcStr,
+                //               newReq->messages_size(),
+                //               waitingBatch.batchQueue.size());
                 std::string lockHint =
                   std::to_string(waitingBatch.lockVersion) + "/" +
                   std::to_string(waitingBatch.rangeStart) + "/" +
@@ -494,6 +449,63 @@ void Scheduler::executeBatchForQueue(const std::string& userFuncPar,
     }
 }
 
+void Scheduler::executeBatchForPartitionQueue(
+  const std::string& userFuncPar,
+  faabric::util::PartitionedStateMessageQueue& waitingBatch,
+  faabric::util::FullLock& lock)
+{
+    auto fisrtMsg = waitingBatch.front();
+    std::string funcStr = faabric::util::funcParToString(*fisrtMsg, false);
+    // Check if the executor is available.
+    if (!executorAvailable(funcStr)) {
+        return;
+    }
+    // Generate new BatchExecuteRequest
+    auto newReq = faabric::util::batchExecFactory();
+    newReq->set_user(fisrtMsg->user());
+    newReq->set_function(fisrtMsg->function());
+    while (waitingBatch.getMessagesCount() != 0) {
+        auto msgVec = waitingBatch.getMessages();
+        for (auto& msgPointer : msgVec) {
+            auto* message = newReq->add_messages();
+            *message = std::move(*msgPointer);
+            message->set_workerpoptime(
+              faabric::util::getGlobalClock().epochMicros());
+        }
+        // Claim new Executor, we can bound the first msg here, since claim
+        // only needs the user and function of Message.
+        faabric::Message& localMsg = newReq->mutable_messages()->at(0);
+        // Record the time for claim executor.
+        auto timeFlag1 = faabric::util::getGlobalClock().epochMicros();
+        std::shared_ptr<faabric::executor::Executor> e =
+          claimExecutor(localMsg, lock);
+        auto timeFlag2 = faabric::util::getGlobalClock().epochMicros();
+        int elapsed = static_cast<int>(timeFlag2 - timeFlag1);
+        for (int i = 0; i < newReq->messages_size(); i++) {
+            newReq->mutable_messages()->at(i).set_executorpreparetime(elapsed);
+        }
+        SPDLOG_DEBUG("Claimed executor {} for {} with message size {}",
+                     e->id,
+                     userFuncPar,
+                     newReq->messages_size());
+        // Execute the tasks for Paritioned State
+        e->executeBatchTasks(newReq);
+        // Check if the executor is available.
+        if (!executorAvailable(funcStr)) {
+            break;
+        }
+        // Reset the newReq
+        newReq = faabric::util::batchExecFactory();
+        newReq->set_user(fisrtMsg->user());
+        newReq->set_function(fisrtMsg->function());
+    }
+    // Reset the lastTime. It will be updated when inserted next time.
+    // We reset here just in case.
+    if (waitingBatch.getMessagesCount() == 0) {
+        waitingBatch.resetlastTime();
+    }
+}
+
 void Scheduler::batchTimerCheck()
 {
     while (!stopBatchTimer) {
@@ -510,87 +522,35 @@ void Scheduler::batchTimerCheck()
                 executeBatchForQueue(userFuncPar, waitingBatch, lock);
             }
         }
-    }
-}
 
-void Scheduler::logStatistics(const std::string& funcStr,
-                              int executeSize,
-                              int waitingBatchSize)
-{
-    executeSizeMap[funcStr].push_back(executeSize);
-    waitingBatchSizeMap[funcStr].push_back(waitingBatchSize);
-}
+        if (!isRepartition) {
+            continue;
+        }
 
-std::pair<double, double> Scheduler::getAverageStatistics(
-  const std::string& funcStr)
-{
-    double executeAvg = 0;
-    double waitingBatchAvg = 0;
-
-    if (!executeSizeMap[funcStr].empty()) {
-        long long executeSum = std::accumulate(
-          executeSizeMap[funcStr].begin(), executeSizeMap[funcStr].end(), 0LL);
-        executeAvg =
-          static_cast<double>(executeSum) / executeSizeMap[funcStr].size();
-    }
-
-    if (!waitingBatchSizeMap[funcStr].empty()) {
-        long long waitingBatchSum =
-          std::accumulate(waitingBatchSizeMap[funcStr].begin(),
-                          waitingBatchSizeMap[funcStr].end(),
-                          0LL);
-        waitingBatchAvg = static_cast<double>(waitingBatchSum) /
-                          waitingBatchSizeMap[funcStr].size();
-    }
-
-    return { executeAvg, waitingBatchAvg };
-}
-
-void Scheduler::initPartitionFunc(const std::string& user,
-                                  const std::string& func,
-                                  int32_t parallelismId)
-{
-    std::vector<std::pair<int, int>> partitionParts;
-
-    std::string userFuncPar =
-      user + "_" + func + "_" + std::to_string(parallelismId);
-    partitionParts.push_back(std::make_pair(0, hashGranularity - 1));
-    hashPartitionedMap[userFuncPar] = partitionParts;
-    localParVersionMap[userFuncPar] = 1;
-    updateLookupTable(userFuncPar);
-
-    long currentMillis = faabric::util::getGlobalClock().epochMillis();
-    partitionTimeMap[userFuncPar] = currentMillis;
-    // TODO - Update Lock
-}
-
-int Scheduler::repartitionFunc(const std::string& user,
-                               const std::string& func,
-                               int32_t parallelismId)
-{
-    // auto batchInfo = getAverageStatistics(functionPar);
-
-    // We should use queue length as instead of the input rates. Since if the
-    // congestion happens, the input rate will be very low, however the queue
-    // can still be fiiled up.
-
-    // The split prerequest is Batching Queue should be full in the time-window
-
-    // TODO - Future consider the lock waiting time and executor execution time
-    return 0;
-}
-
-void Scheduler::updateLookupTable(std::string functionPar)
-{
-    std::vector<int> lookup_table(100, 0);
-    auto hashPartition = hashPartitionedMap[functionPar];
-    for (int part = 0; part < hashPartition.size(); ++part) {
-        for (int i = hashPartition[part].first; i <= hashPartition[part].second;
-             ++i) {
-            lookup_table[i] = part;
+        // if Repartitioned, parititioned state functions are in the
+        // partitionedWaitingQueues.
+        for (auto& [userFuncPar, waitingBatch] : partitionedWaitingQueues) {
+            if (waitingBatch.getMessagesCount() == 0) {
+                continue;
+            }
+            if (waitingBatch.getMessagesCount() >= executeBatchsize ||
+                waitingBatch.getTimeInterval() >= conf.batchInterval) {
+                executeBatchForPartitionQueue(userFuncPar, waitingBatch, lock);
+            }
         }
     }
-    lookupTableMap[functionPar] = lookup_table;
+}
+
+void Scheduler::resetParameter(std::string key, int32_t value)
+{
+    faabric::util::FullLock lock(mx);
+    if (key == "is_repartition") {
+        isRepartition = value == 1;
+        SPDLOG_INFO("Reset isRepartition parameter to : {}", isRepartition);
+    } else {
+        throw std::runtime_error(
+          fmt::format("Unrecognized parameter key: {}", key));
+    }
 }
 
 void Scheduler::resetBatchsize(int32_t newSize)

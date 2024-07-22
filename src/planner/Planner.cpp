@@ -1435,6 +1435,24 @@ bool Planner::resetMaxReplicas(int32_t maxReplicas)
     return true;
 }
 
+bool Planner::resetParameter(const std::string& key, const int32_t value)
+{
+    auto availableHosts = getAvailableHosts();
+    faabric::planner::ResetStreamParameterRequest req;
+    req.set_parameter(key);
+    req.set_value(value);
+
+    for (const auto& host : availableHosts) {
+        SPDLOG_INFO("Planner reset {} parameter {} to {}", host->ip(), key, value);
+        faabric::scheduler::getFunctionCallClient(host->ip())
+          ->resetParameter(std::make_shared<faabric::planner::ResetStreamParameterRequest>(
+            req));
+    }
+
+    return true;
+}
+
+
 Planner& getPlanner()
 {
     static Planner planner;

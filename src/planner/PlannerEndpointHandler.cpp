@@ -485,7 +485,11 @@ void PlannerEndpointHandler::onRequest(
                         value);
             if (parameter == "max_inflight_reqs") {
                 maxInflightReqs = value;
-            } else {
+            } 
+            else if (parameter == "is_repartition"){
+                faabric::planner::getPlanner().resetParameter(parameter, value);
+            }
+            else {
                 SPDLOG_ERROR("Unrecognized parameter {}", parameter);
                 response.result(beast::http::status::bad_request);
                 response.body() = std::string("Unrecognized parameter");
