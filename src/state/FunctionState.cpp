@@ -13,35 +13,6 @@ using namespace faabric::util;
 
 namespace faabric::state {
 
-IndivState::IndivState(bool locked)
-  : registerNum(0)
-  , waitingNum(0)
-{
-    lock = std::make_shared<faabric::util::IndivLock>();
-
-    if (locked) {
-        lock->acquire();
-    }
-}
-
-bool IndivState::isLocked() const
-{
-    return lock->isLocked();
-}
-
-void IndivState::acquireLock()
-{
-    waitingNum++;
-    lock->acquire();
-    waitingNum--;
-}
-
-void IndivState::releaseLock()
-{
-    lock->release();
-    registerNum.fetch_sub(1);
-}
-
 const std::vector<uint8_t>& IndivState::getState() const
 {
     std::lock_guard<std::mutex> guard(stateMutex);
@@ -52,21 +23,6 @@ void IndivState::setState(const std::vector<uint8_t>& newState)
 {
     std::lock_guard<std::mutex> guard(stateMutex);
     state = newState;
-}
-
-int IndivState::getRegisterNum() const
-{
-    return registerNum.load();
-}
-
-int IndivState::getWaitingNum() const
-{
-    return waitingNum.load();
-}
-
-int IndivState::incrementRegisterNum()
-{
-    return registerNum.fetch_add(1);
 }
 
 FunctionState::FunctionState(const std::string& userIn,
@@ -584,89 +540,33 @@ void FunctionState::writePartitionState(std::vector<uint8_t>& states)
         indivStateMap.at(key).setState(value);
     }
 }
-std::string FunctionState::doSelectLock(std::set<std::string>& keys)
-{
-    int minWaiting = INT_MAX;
-    std::string selectedKey;
-    for (const auto& key : keys) {
-        auto& tempIndivState = indivStateMap.at(key);
-        if (tempIndivState.getWaitingNum() < minWaiting) {
-            minWaiting = tempIndivState.getWaitingNum();
-            selectedKey = key;
-        }
-    }
-    return selectedKey;
-}
 
 int FunctionState::acquireIndivLocks(std::set<std::string>& keys,
                                      uint8_t* buffer,
                                      int acquireTimes)
 {
+    // Get the thread ID
     std::map<std::string, std::vector<uint8_t>> filteredMap;
-    faabric::util::UniqueLock stateLock(mx);
-    std::string result;
-    bool firstTime = acquireTimes == 1;
-    for (const auto& key : keys) {
-        // If this key has never been accessed, we need to create a lock for it
-        if (!indivStateMap.contains(key)) {
-            indivStateMap.emplace(std::piecewise_construct,
-                                  std::forward_as_tuple(key),
-                                  std::forward_as_tuple(true));
-            if (!result.empty()) {
-                result += "|";
-            }
-            result += key;
-            continue;
-        }
-        // It this key has already been accessed
-        // We ignore the key if it is already locked
-        if (indivStateMap.at(key).isLocked()) {
-            continue;
-        }
-        // If it is unlocked, we lock it
-        indivStateMap.at(key).acquireLock();
-        // If it's lock is created and released without writing data, throw
-        // errors.
-        if (indivStateMap.at(key).getState().empty()) {
-            SPDLOG_ERROR("Key {} is unlocked before writing", key);
-            throw std::runtime_error("Key is unlocked before writing");
-        }
-        filteredMap.emplace(key, indivStateMap.at(key).getState());
-        if (!result.empty()) {
-            result += "|";
-        }
-        result += key;
-    }
 
-    if (firstTime) {
-        for (const auto& key : keys) {
-            indivStateMap.at(key).incrementRegisterNum();
+    std::string acquiredKeysStr;
+    auto acquiredKeys = multiKeyLock.tryAcquire(keys);
+    for (const auto& key : acquiredKeys) {
+        if (!acquiredKeysStr.empty()) {
+            acquiredKeysStr += "|";
+        }
+        acquiredKeysStr += key;
+        if (!indivStateMap[key].getState().empty()) {
+            filteredMap.emplace(key, indivStateMap.at(key).getState());
         }
     }
 
-    // If the filterred map is empty, lock one value.
-    if (result.empty()) {
-        std::string selectedKey = doSelectLock(keys);
-        stateLock.unlock();
-        indivStateMap.at(selectedKey).acquireLock();
-        stateLock.lock();
-        filteredMap.emplace(selectedKey,
-                            indivStateMap.at(selectedKey).getState());
-        result += selectedKey;
-    }
-
-    SPDLOG_TRACE("Acquiring locks for {}/{}-{}: {}",
-                 user,
-                 function,
-                 parallelismId,
-                 result);
-
-    std::vector<uint8_t> resultVec(result.begin(), result.end());
-    resultVec.push_back('\0');
+    std::vector<uint8_t> acquiredKeysVec(acquiredKeysStr.begin(),
+                                         acquiredKeysStr.end());
+    acquiredKeysVec.push_back('\0');
 
     // Step 2: Create the vector and copy the locked data into it
-    std::copy(resultVec.data(),
-              resultVec.data() + resultVec.size(),
+    std::copy(acquiredKeysVec.data(),
+              acquiredKeysVec.data() + acquiredKeysVec.size(),
               reinterpret_cast<uint8_t*>(buffer));
 
     // Step3: Calculate the Vec Size
@@ -676,15 +576,14 @@ int FunctionState::acquireIndivLocks(std::set<std::string>& keys,
 
 void FunctionState::writeIndivStateUnlocks(std::vector<uint8_t>& states)
 {
+    std::set<std::string> keys;
     auto stateMap = faabric::util::deserializeParState(states);
     for (auto& [key, value] : stateMap) {
         indivStateMap.at(key).setState(value);
+        keys.insert(key);
     }
     // Get the mx and unlock
-    faabric::util::UniqueLock stateLock(mx);
-    for (auto& [key, value] : stateMap) {
-        indivStateMap.at(key).releaseLock();
-    }
+    multiKeyLock.release(keys);
 }
 
 std::map<std::string, std::vector<uint8_t>> FunctionState::getStateMap()
