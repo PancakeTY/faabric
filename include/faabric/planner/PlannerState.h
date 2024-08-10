@@ -40,7 +40,7 @@ struct PlannerState
 
     // The metrics for each function-parallelismId
     // Map<User-Function-ParallelismId, Metrics>
-    std::map<std::string, std::shared_ptr<FunctionLatency>> funcLatencyStats;
+    // std::map<std::string, std::shared_ptr<FunctionLatency>> funcLatencyStats;
 
     // The metrics for the whole chain function application (Same chain Id)
     // For chain functions, it is the metrics from the first function is invoked
@@ -49,8 +49,8 @@ struct PlannerState
     // multiple [chain functions source], they belong to different parallelism.
     // source_1 -> func1_1 -> func2_2 and source_2 -> func1_2 -> func2_2
     // Map<First(User-Function), Metrics>
-    std::map<std::string, std::shared_ptr<FunctionLatency>>
-      chainFuncLatencyStats;
+    // std::map<std::string, std::shared_ptr<FunctionLatency>>
+    //   chainFuncLatencyStats;
 
     // The count of the chain function invocation inflight
     // This is used to get the total processing time of the chain function

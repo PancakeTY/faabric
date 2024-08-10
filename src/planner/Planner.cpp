@@ -156,8 +156,8 @@ void Planner::flushHosts()
 void Planner::flushExecutors()
 {
     // Flush Planner State
-    state.funcLatencyStats.clear();
-    state.chainFuncLatencyStats.clear();
+    // state.funcLatencyStats.clear();
+    // state.chainFuncLatencyStats.clear();
     state.chainedInflights.clear();
     // Flush Aware Scheduler State
     auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
@@ -370,30 +370,30 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg,
             int parallelismId = msg->parallelismid();
             std::string userFuncPar =
               userFunc + "_" + std::to_string(parallelismId);
-            if (state.funcLatencyStats.find(userFuncPar) !=
-                state.funcLatencyStats.end()) {
-                // Record the Lock metrics here
-                int waitingTime = msg->workerpoptime() - msg->workerqueuetime();
-                int executeTime =
-                  msg->finishtimestamp() - msg->starttimestamp();
-                state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
-                  msgId, waitingTime, executeTime);
-                // Print the metrics Only for debug now.
-                // state.funcLatencyStats[userFuncPar]->print();
-            }
+            // if (state.funcLatencyStats.find(userFuncPar) !=
+            //     state.funcLatencyStats.end()) {
+            //     // Record the Lock metrics here
+            //     int waitingTime = msg->workerpoptime() - msg->workerqueuetime();
+            //     int executeTime =
+            //       msg->finishtimestamp() - msg->starttimestamp();
+            //     state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
+            //       msgId, waitingTime, executeTime);
+            //     // Print the metrics Only for debug now.
+            //     // state.funcLatencyStats[userFuncPar]->print();
+            // }
 
             // Record the Chain metrics
             int chainedId = msg->chainedid();
             state.chainedInflights[chainedId]--;
             if (state.chainedInflights[chainedId] == 0) {
                 // req is the first message in the chain
-                userFunc = req->user() + "_" + req->function();
-                if (state.chainFuncLatencyStats.find(userFunc) !=
-                    state.chainFuncLatencyStats.end()) {
-                    state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
-                      chainedId);
-                    // state.chainFuncLatencyStats[userFunc]->print();
-                }
+                // userFunc = req->user() + "_" + req->function();
+                // if (state.chainFuncLatencyStats.find(userFunc) !=
+                //     state.chainFuncLatencyStats.end()) {
+                //     state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
+                //       chainedId);
+                //     // state.chainFuncLatencyStats[userFunc]->print();
+                // }
                 state.chainedInflights.erase(chainedId);
             }
 
@@ -484,38 +484,38 @@ void Planner::setMessageResultWitoutLock(std::shared_ptr<faabric::Message> msg)
             int parallelismId = msg->parallelismid();
             std::string userFuncPar =
               userFunc + "_" + std::to_string(parallelismId);
-            if (state.funcLatencyStats.find(userFuncPar) !=
-                state.funcLatencyStats.end()) {
-                // Record the Lock metrics here
-                // int plannerQueueTime =
-                //   msg->plannerpoptime() - msg->plannerqueuetime();
-                // int plannerConsumeTime = msg->plannerdispatchtime() -
-                //                          msg->workerqueuetime();
-                int workerQueueTime =
-                  msg->workerpoptime() - msg->workerqueuetime();
-                // int prepareExecuterTime = msg->executorpreparetime();
-                int executeTime =
-                  msg->workerexecuteend() - msg->workerexecutestart();
-                // int totalTime = msg->finishtimestamp() -
-                // msg->starttimestamp();
-                state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
-                  msgId, workerQueueTime, executeTime);
-                // Print the metrics Only for debug now.
-                // state.funcLatencyStats[userFuncPar]->print();
-            }
+            // if (state.funcLatencyStats.find(userFuncPar) !=
+            //     state.funcLatencyStats.end()) {
+            //     // Record the Lock metrics here
+            //     // int plannerQueueTime =
+            //     //   msg->plannerpoptime() - msg->plannerqueuetime();
+            //     // int plannerConsumeTime = msg->plannerdispatchtime() -
+            //     //                          msg->workerqueuetime();
+            //     int workerQueueTime =
+            //       msg->workerpoptime() - msg->workerqueuetime();
+            //     // int prepareExecuterTime = msg->executorpreparetime();
+            //     int executeTime =
+            //       msg->workerexecuteend() - msg->workerexecutestart();
+            //     // int totalTime = msg->finishtimestamp() -
+            //     // msg->starttimestamp();
+            //     state.funcLatencyStats[userFuncPar]->removeInFlightReqs(
+            //       msgId, workerQueueTime, executeTime);
+            //     // Print the metrics Only for debug now.
+            //     // state.funcLatencyStats[userFuncPar]->print();
+            // }
 
             // Record the Chain metrics
             int chainedId = msg->chainedid();
             state.chainedInflights[chainedId]--;
             if (state.chainedInflights[chainedId] == 0) {
                 // req is the first message in the chain
-                userFunc = req->user() + "_" + req->function();
-                if (state.chainFuncLatencyStats.find(userFunc) !=
-                    state.chainFuncLatencyStats.end()) {
-                    state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
-                      chainedId);
-                    // state.chainFuncLatencyStats[userFunc]->print();
-                }
+                // userFunc = req->user() + "_" + req->function();
+                // if (state.chainFuncLatencyStats.find(userFunc) !=
+                //     state.chainFuncLatencyStats.end()) {
+                //     state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
+                //       chainedId);
+                //     // state.chainFuncLatencyStats[userFunc]->print();
+                // }
                 state.chainedInflights.erase(chainedId);
             }
 
@@ -854,38 +854,38 @@ void Planner::callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req)
             for (size_t i = 0; i < req->messages_size(); i++) {
                 faabric::Message tempMessage = req->messages(i);
                 int tempParallelisimId = tempMessage.parallelismid();
-                int msgId = tempMessage.id();
+                // int msgId = tempMessage.id();
                 int chainedId = tempMessage.chainedid();
                 std::string userFunc =
                   tempMessage.user() + "_" + tempMessage.function();
                 std::string userFuncPar =
                   userFunc + "_" + std::to_string(tempParallelisimId);
 
-                if (state.chainFuncLatencyStats.find(userFunc) ==
-                    state.chainFuncLatencyStats.end()) {
-                    // The chain function name does not exist in the map, so
-                    // we need to create a new Metrics object
-                    std::shared_ptr<FunctionLatency> newMetrics =
-                      std::make_shared<FunctionLatency>(userFunc);
+                // if (state.chainFuncLatencyStats.find(userFunc) ==
+                //     state.chainFuncLatencyStats.end()) {
+                //     // The chain function name does not exist in the map, so
+                //     // we need to create a new Metrics object
+                //     std::shared_ptr<FunctionLatency> newMetrics =
+                //       std::make_shared<FunctionLatency>(userFunc);
 
-                    // Finally, add the newMetrics object to the map
-                    state.chainFuncLatencyStats[userFunc] =
-                      std::move(newMetrics);
-                }
+                //     // Finally, add the newMetrics object to the map
+                //     state.chainFuncLatencyStats[userFunc] =
+                //       std::move(newMetrics);
+                // }
                 // For the NEW messages, reset the in-flight requests
                 state.chainedInflights[chainedId] = 1;
-                state.chainFuncLatencyStats[userFunc]->addInFlightReq(
-                  chainedId);
+                // state.chainFuncLatencyStats[userFunc]->addInFlightReq(
+                //   chainedId);
 
-                if (state.funcLatencyStats.find(userFuncPar) ==
-                    state.funcLatencyStats.end()) {
-                    // The function name does not exist in the map, so we
-                    // need to create a new Metrics object
-                    std::shared_ptr<FunctionLatency> newMetrics =
-                      std::make_shared<FunctionLatency>(userFuncPar);
-                    state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
-                }
-                state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
+                // if (state.funcLatencyStats.find(userFuncPar) ==
+                //     state.funcLatencyStats.end()) {
+                //     // The function name does not exist in the map, so we
+                //     // need to create a new Metrics object
+                //     std::shared_ptr<FunctionLatency> newMetrics =
+                //       std::make_shared<FunctionLatency>(userFuncPar);
+                //     state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
+                // }
+                // state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
             }
             break;
         }
@@ -898,19 +898,19 @@ void Planner::callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req)
                 std::string userFunc =
                   tempMessage.user() + "_" + tempMessage.function();
                 int tempParallelisimId = tempMessage.parallelismid();
-                int msgId = tempMessage.id();
+                // int msgId = tempMessage.id();
                 std::string userFuncPar =
                   userFunc + "_" + std::to_string(tempParallelisimId);
 
-                if (state.funcLatencyStats.find(userFuncPar) ==
-                    state.funcLatencyStats.end()) {
-                    // The function name does not exist in the map, so we
-                    // need to create a new Metrics object
-                    std::shared_ptr<FunctionLatency> newMetrics =
-                      std::make_shared<FunctionLatency>(userFuncPar);
-                    state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
-                }
-                state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
+                // if (state.funcLatencyStats.find(userFuncPar) ==
+                //     state.funcLatencyStats.end()) {
+                //     // The function name does not exist in the map, so we
+                //     // need to create a new Metrics object
+                //     std::shared_ptr<FunctionLatency> newMetrics =
+                //       std::make_shared<FunctionLatency>(userFuncPar);
+                //     state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
+                // }
+                // state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
             }
             break;
         }
@@ -1056,38 +1056,38 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
             for (size_t i = 0; i < req->messages_size(); i++) {
                 faabric::Message tempMessage = req->messages(i);
                 int tempParallelisimId = tempMessage.parallelismid();
-                int msgId = tempMessage.id();
+                // int msgId = tempMessage.id();
                 int chainedId = tempMessage.chainedid();
                 std::string userFunc =
                   tempMessage.user() + "_" + tempMessage.function();
                 std::string userFuncPar =
                   userFunc + "_" + std::to_string(tempParallelisimId);
 
-                if (state.chainFuncLatencyStats.find(userFunc) ==
-                    state.chainFuncLatencyStats.end()) {
-                    // The chain function name does not exist in the map, so we
-                    // need to create a new Metrics object
-                    std::shared_ptr<FunctionLatency> newMetrics =
-                      std::make_shared<FunctionLatency>(userFunc);
+                // if (state.chainFuncLatencyStats.find(userFunc) ==
+                //     state.chainFuncLatencyStats.end()) {
+                //     // The chain function name does not exist in the map, so we
+                //     // need to create a new Metrics object
+                //     std::shared_ptr<FunctionLatency> newMetrics =
+                //       std::make_shared<FunctionLatency>(userFunc);
 
-                    // Finally, add the newMetrics object to the map
-                    state.chainFuncLatencyStats[userFunc] =
-                      std::move(newMetrics);
-                }
+                //     // Finally, add the newMetrics object to the map
+                //     state.chainFuncLatencyStats[userFunc] =
+                //       std::move(newMetrics);
+                // }
                 // For the NEW messages, reset the in-flight requests
                 state.chainedInflights[chainedId] = 1;
-                state.chainFuncLatencyStats[userFunc]->addInFlightReq(
-                  chainedId);
+                // state.chainFuncLatencyStats[userFunc]->addInFlightReq(
+                //   chainedId);
 
-                if (state.funcLatencyStats.find(userFuncPar) ==
-                    state.funcLatencyStats.end()) {
-                    // The function name does not exist in the map, so we
-                    // need to create a new Metrics object
-                    std::shared_ptr<FunctionLatency> newMetrics =
-                      std::make_shared<FunctionLatency>(userFuncPar);
-                    state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
-                }
-                state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
+                // if (state.funcLatencyStats.find(userFuncPar) ==
+                //     state.funcLatencyStats.end()) {
+                //     // The function name does not exist in the map, so we
+                //     // need to create a new Metrics object
+                //     std::shared_ptr<FunctionLatency> newMetrics =
+                //       std::make_shared<FunctionLatency>(userFuncPar);
+                //     state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
+                // }
+                // state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
             }
 
             // 3. We send the mappings to all the hosts involved
@@ -1127,20 +1127,20 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
                 std::string userFunc =
                   tempMessage.user() + "_" + tempMessage.function();
                 int tempParallelisimId = tempMessage.parallelismid();
-                int msgId = tempMessage.id();
+                // int msgId = tempMessage.id();
                 int chainedid = tempMessage.chainedid();
                 std::string userFuncPar =
                   userFunc + "_" + std::to_string(tempParallelisimId);
 
-                if (state.funcLatencyStats.find(userFuncPar) ==
-                    state.funcLatencyStats.end()) {
-                    // The function name does not exist in the map, so we
-                    // need to create a new Metrics object
-                    std::shared_ptr<FunctionLatency> newMetrics =
-                      std::make_shared<FunctionLatency>(userFuncPar);
-                    state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
-                }
-                state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
+                // if (state.funcLatencyStats.find(userFuncPar) ==
+                //     state.funcLatencyStats.end()) {
+                //     // The function name does not exist in the map, so we
+                //     // need to create a new Metrics object
+                //     std::shared_ptr<FunctionLatency> newMetrics =
+                //       std::make_shared<FunctionLatency>(userFuncPar);
+                //     state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
+                // }
+                // state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
                 state.chainedInflights[chainedid]++;
             }
 
@@ -1328,13 +1328,13 @@ std::map<std::string, FunctionMetrics> Planner::collectMetrics()
     std::map<std::string, FunctionMetrics> metricsStats;
     // Retrive the Latency Metrics from planner state
     // Metrics of chained functions (topology)
-    for (auto [ithFunction, ithLatency] : state.chainFuncLatencyStats) {
-        FunctionMetrics ithMetrics = FunctionMetrics(ithFunction);
-        ithMetrics.isChained = true;
-        ithMetrics.throughput = ithLatency->completedRequests;
-        ithMetrics.processLatency = ithLatency->averageLatency;
-        metricsStats.emplace(ithFunction, ithMetrics);
-    }
+    // for (auto [ithFunction, ithLatency] : state.chainFuncLatencyStats) {
+    //     FunctionMetrics ithMetrics = FunctionMetrics(ithFunction);
+    //     ithMetrics.isChained = true;
+    //     ithMetrics.throughput = ithLatency->completedRequests;
+    //     ithMetrics.processLatency = ithLatency->averageLatency;
+    //     metricsStats.emplace(ithFunction, ithMetrics);
+    // }
     std::map<std::string, std::map<std::string, int>> tempMetrics;
     // Retrive Metrics from State Server.
     for (auto [ithHostName, ithHostObject] : state.hostMap) {
@@ -1350,21 +1350,21 @@ std::map<std::string, FunctionMetrics> Planner::collectMetrics()
     }
 
     // Metrics of single function
-    for (auto [ithFunction, ithLatency] : state.funcLatencyStats) {
-        FunctionMetrics ithMetrics = FunctionMetrics(ithFunction);
-        ithMetrics.throughput = ithLatency->completedRequests;
-        ithMetrics.processLatency = ithLatency->averageLatency;
-        ithMetrics.averageWaitingTime = ithLatency->averageWaitingTime;
-        ithMetrics.averageExecuteTime = ithLatency->averageExecuteTime;
-        for (auto [ithUserFuncPar, ithStateMetrics] : tempMetrics) {
-            if (ithUserFuncPar != ithMetrics.function) {
-                continue;
-            }
-            ithMetrics.lockCongestionTime = ithStateMetrics[LOCK_BLOCK_TIME];
-            ithMetrics.lockHoldTime = ithStateMetrics[LOCK_HOLD_TIME];
-        }
-        metricsStats.emplace(ithFunction, ithMetrics);
-    }
+    // for (auto [ithFunction, ithLatency] : state.funcLatencyStats) {
+    //     FunctionMetrics ithMetrics = FunctionMetrics(ithFunction);
+    //     ithMetrics.throughput = ithLatency->completedRequests;
+    //     ithMetrics.processLatency = ithLatency->averageLatency;
+    //     ithMetrics.averageWaitingTime = ithLatency->averageWaitingTime;
+    //     ithMetrics.averageExecuteTime = ithLatency->averageExecuteTime;
+    //     for (auto [ithUserFuncPar, ithStateMetrics] : tempMetrics) {
+    //         if (ithUserFuncPar != ithMetrics.function) {
+    //             continue;
+    //         }
+    //         ithMetrics.lockCongestionTime = ithStateMetrics[LOCK_BLOCK_TIME];
+    //         ithMetrics.lockHoldTime = ithStateMetrics[LOCK_HOLD_TIME];
+    //     }
+    //     metricsStats.emplace(ithFunction, ithMetrics);
+    // }
 
     // Print the metrics.
     for (auto [ithFunc, ithMetrics] : metricsStats) {
