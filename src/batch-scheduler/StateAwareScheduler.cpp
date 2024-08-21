@@ -28,25 +28,49 @@ void StateAwareScheduler::funcStateInitializer()
 {
 
     maxParallelism = faabric::util::getSystemConfig().maxParallelism;
-    // Register the chaining functions in the same topology.
-    funcChainedMap["stream_function_source"] = {
-        "stream_function_state_source", "stream_function_parstate_source"
-    };
+    // // Register the chaining functions in the same topology.
+    // funcChainedMap["stream_function_source"] = {
+    //     "stream_function_state_source", "stream_function_parstate_source"
+    // };
 
-    funcChainedMap["stream_wordcount_source"] = { "stream_wordcount_source",
-                                                  "stream_wordcount_split",
-                                                  "stream_wordcount_count" };
+    // funcChainedMap["stream_wordcount_source"] = { "stream_wordcount_source",
+    //                                               "stream_wordcount_split",
+    //                                               "stream_wordcount_count" };
 
     // Register the function state
     // If the function state is partitioned, we need to register the partition
     // input key and partition state key, otherwise, empty is ok
-    funcStateRegMap["stream_function_state"] = std::make_tuple("", "");
-    funcStateRegMap["stream_function_parstate"] =
-      std::make_tuple("partitionInputKey", "partitionStateKey");
-    funcStateRegMap["stream_wordcount_count"] =
-      std::make_tuple("partitionInputKey", "partitionStateKey");
-    funcStateRegMap["stream_wordcountindiv_count"] =
-      std::make_tuple("partitionInputKey", "partitionStateKey");
+    // funcStateRegMap["stream_function_state"] = std::make_tuple("", "");
+    // funcStateRegMap["stream_function_parstate"] =
+    //   std::make_tuple("partitionedAttribute", "partitionStateKey");
+    // funcStateRegMap["stream_wordcount_count"] =
+    //   std::make_tuple("partitionedAttribute", "partitionStateKey");
+    // funcStateRegMap["stream_wordcountindiv_count"] =
+    //   std::make_tuple("partitionedAttribute", "partitionStateKey");
+    // funcStateRegMap["stream_sd_moving_avg"] =
+    //   std::make_tuple("partitionedAttribute", "partitionStateKey");
+    // funcStateRegMap["stream_mo_score"] = std::make_tuple("", "");
+    // funcStateRegMap["stream_mo_anomaly"] =
+    //   std::make_tuple("partitionedAttribute", "partitionStateKey");
+    // funcStateRegMap["stream_mo_alert"] = std::make_tuple("", "");
+}
+
+void StateAwareScheduler::registerFunctionState(const std::string& userFunction,
+                                                const std::string& partitionBy,
+                                                const std::string& stateKey)
+{
+    if (partitionBy == "None" || stateKey == "None") {
+        SPDLOG_INFO("Registering function state {} with no partitioning",
+                    userFunction);
+        funcStateRegMap[userFunction] = std::make_tuple("", "");
+    } else {
+        SPDLOG_INFO("Registering function state {} with partitioning by {} and "
+                    "state key {}",
+                    userFunction,
+                    partitionBy,
+                    stateKey);
+        funcStateRegMap[userFunction] = std::make_tuple(partitionBy, stateKey);
+    }
 }
 
 static std::map<std::string, int> getHostFreqCount(

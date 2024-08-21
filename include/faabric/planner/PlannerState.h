@@ -52,10 +52,7 @@ struct PlannerState
     // std::map<std::string, std::shared_ptr<FunctionLatency>>
     //   chainFuncLatencyStats;
 
-    // The count of the chain function invocation inflight
-    // This is used to get the total processing time of the chain function
-    // invocation
-    // Map<chainedId, count>
-    std::map<int, int> chainedInflights;
+    // Map<appId, <chainedId, count>>
+    // std::map<int, std::map<int, int>> appChainedInflights;
 };
 }

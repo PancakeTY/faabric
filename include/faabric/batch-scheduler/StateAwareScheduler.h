@@ -64,6 +64,10 @@ class StateAwareScheduler final : public BatchScheduler
         return functionParallelism;
     }
 
+    void registerFunctionState(const std::string& userFunction,
+                               const std::string& partitionBy,
+                               const std::string& stateKey);
+
   private:
     bool isFirstDecisionBetter(
       std::shared_ptr<SchedulingDecision> decisionA,

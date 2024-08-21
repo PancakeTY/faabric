@@ -498,6 +498,38 @@ void PlannerEndpointHandler::onRequest(
 
             return ctx.sendFunction(std::move(response));
         }
+        case faabric::planner::HttpMessage_Type_REGISTER_FUNCTION_STATE: {
+            SPDLOG_DEBUG("Planner received REGISTER_FUNCTION_STATE request");
+            faabric::planner::RegisterFunctionStateRequest rawReq;
+            try {
+                faabric::util::jsonToMessage(msg.payloadjson(), &rawReq);
+            } catch (faabric::util::JsonSerialisationException e) {
+                response.result(beast::http::status::bad_request);
+                response.body() = std::string("Bad JSON in body's payload");
+                return ctx.sendFunction(std::move(response));
+            }
+            std::string function = rawReq.function();
+            std::string attribute = rawReq.attribute();
+            std::string stateKey = rawReq.statekey();
+            
+            std::shared_ptr<faabric::batch_scheduler::BatchScheduler>
+              batchScheduler = faabric::batch_scheduler::getBatchScheduler();
+            // Try to cast it to a StateAwareBatchScheduler
+            std::shared_ptr<faabric::batch_scheduler::StateAwareScheduler>
+              stateAwareScheduler = std::dynamic_pointer_cast<
+                faabric::batch_scheduler::StateAwareScheduler>(batchScheduler);
+            if (stateAwareScheduler) {
+                stateAwareScheduler->registerFunctionState(function, attribute, stateKey);
+            }
+            else {
+                SPDLOG_ERROR(
+                  "Failed to cast BatchScheduler to StateAwareBatchScheduler");
+                response.result(beast::http::status::internal_server_error);
+                response.body() = std::string("Failed to get StateAwareScheduler");
+                return ctx.sendFunction(std::move(response));
+            }
+            return ctx.sendFunction(std::move(response));
+        }
         default: {
             SPDLOG_ERROR("Unrecognised message type {}", msg.type());
             response.result(beast::http::status::bad_request);

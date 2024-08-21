@@ -158,7 +158,7 @@ void Planner::flushExecutors()
     // Flush Planner State
     // state.funcLatencyStats.clear();
     // state.chainFuncLatencyStats.clear();
-    state.chainedInflights.clear();
+    // state.appChainedInflights.clear();
     // Flush Aware Scheduler State
     auto batchScheduler = faabric::batch_scheduler::getBatchScheduler();
     auto stateAwareScheduler =
@@ -383,19 +383,22 @@ void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg,
             // }
 
             // Record the Chain metrics
-            int chainedId = msg->chainedid();
-            state.chainedInflights[chainedId]--;
-            if (state.chainedInflights[chainedId] == 0) {
-                // req is the first message in the chain
-                // userFunc = req->user() + "_" + req->function();
-                // if (state.chainFuncLatencyStats.find(userFunc) !=
-                //     state.chainFuncLatencyStats.end()) {
-                //     state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
-                //       chainedId);
-                //     // state.chainFuncLatencyStats[userFunc]->print();
-                // }
-                state.chainedInflights.erase(chainedId);
-            }
+            // int chainedId = msg->chainedid();
+            // state.appChainedInflights[appId][chainedId]--;
+            // if (state.appChainedInflights[appId][chainedId] == 0) {
+            //     // req is the first message in the chain
+            //     // userFunc = req->user() + "_" + req->function();
+            //     // if (state.chainFuncLatencyStats.find(userFunc) !=
+            //     //     state.chainFuncLatencyStats.end()) {
+            //     //     state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
+            //     //       chainedId);
+            //     //     // state.chainFuncLatencyStats[userFunc]->print();
+            //     // }
+            //     state.appChainedInflights[appId].erase(chainedId);
+            //     if (state.appChainedInflights[appId].empty()) {
+            //         state.appChainedInflights.erase(appId);
+            //     }
+            // }
 
             // Remove pair altogether if no more messages left
             if (req->messages_size() == 0) {
@@ -505,19 +508,22 @@ void Planner::setMessageResultWitoutLock(std::shared_ptr<faabric::Message> msg)
             // }
 
             // Record the Chain metrics
-            int chainedId = msg->chainedid();
-            state.chainedInflights[chainedId]--;
-            if (state.chainedInflights[chainedId] == 0) {
-                // req is the first message in the chain
-                // userFunc = req->user() + "_" + req->function();
-                // if (state.chainFuncLatencyStats.find(userFunc) !=
-                //     state.chainFuncLatencyStats.end()) {
-                //     state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
-                //       chainedId);
-                //     // state.chainFuncLatencyStats[userFunc]->print();
-                // }
-                state.chainedInflights.erase(chainedId);
-            }
+            // int chainedId = msg->chainedid();
+            // state.appChainedInflights[appId][chainedId]--;
+            // if (state.appChainedInflights[appId][chainedId] == 0) {
+            //     // req is the first message in the chain
+            //     // userFunc = req->user() + "_" + req->function();
+            //     // if (state.chainFuncLatencyStats.find(userFunc) !=
+            //     //     state.chainFuncLatencyStats.end()) {
+            //     //     state.chainFuncLatencyStats[userFunc]->removeInFlightReqs(
+            //     //       chainedId);
+            //     //     // state.chainFuncLatencyStats[userFunc]->print();
+            //     // }
+            //     state.appChainedInflights[appId].erase(chainedId);
+            //     if (state.appChainedInflights[appId].empty()) {
+            //         state.appChainedInflights.erase(appId);
+            //     }
+            // }
 
             // Remove pair altogether if no more messages left
             if (req->messages_size() == 0) {
@@ -762,8 +768,8 @@ void Planner::enqueueCallBatch(std::shared_ptr<BatchExecuteRequest> req,
             oldDec->addMessage("enqueue_not_set", req->messages(i));
 
             faabric::Message tempMessage = req->messages(i);
-            int chainedid = tempMessage.chainedid();
-            state.chainedInflights[chainedid]++;
+            // int chainedid = tempMessage.chainedid();
+            // state.appChainedInflights[appId][chainedid]++;
         }
     }
     return batchExecuteReqQueue.enqueue(req);
@@ -855,7 +861,7 @@ void Planner::callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req)
                 faabric::Message tempMessage = req->messages(i);
                 int tempParallelisimId = tempMessage.parallelismid();
                 // int msgId = tempMessage.id();
-                int chainedId = tempMessage.chainedid();
+                // int chainedId = tempMessage.chainedid();
                 std::string userFunc =
                   tempMessage.user() + "_" + tempMessage.function();
                 std::string userFuncPar =
@@ -873,7 +879,7 @@ void Planner::callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req)
                 //       std::move(newMetrics);
                 // }
                 // For the NEW messages, reset the in-flight requests
-                state.chainedInflights[chainedId] = 1;
+                // state.appChainedInflights[appId][chainedId] = 1;
                 // state.chainFuncLatencyStats[userFunc]->addInFlightReq(
                 //   chainedId);
 
@@ -1057,7 +1063,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
                 faabric::Message tempMessage = req->messages(i);
                 int tempParallelisimId = tempMessage.parallelismid();
                 // int msgId = tempMessage.id();
-                int chainedId = tempMessage.chainedid();
+                // int chainedId = tempMessage.chainedid();
                 std::string userFunc =
                   tempMessage.user() + "_" + tempMessage.function();
                 std::string userFuncPar =
@@ -1075,7 +1081,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
                 //       std::move(newMetrics);
                 // }
                 // For the NEW messages, reset the in-flight requests
-                state.chainedInflights[chainedId] = 1;
+                // state.appChainedInflights[appId][chainedId] = 1;
                 // state.chainFuncLatencyStats[userFunc]->addInFlightReq(
                 //   chainedId);
 
@@ -1128,7 +1134,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
                   tempMessage.user() + "_" + tempMessage.function();
                 int tempParallelisimId = tempMessage.parallelismid();
                 // int msgId = tempMessage.id();
-                int chainedid = tempMessage.chainedid();
+                // int chainedid = tempMessage.chainedid();
                 std::string userFuncPar =
                   userFunc + "_" + std::to_string(tempParallelisimId);
 
@@ -1141,7 +1147,7 @@ Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
                 //     state.funcLatencyStats[userFuncPar] = std::move(newMetrics);
                 // }
                 // state.funcLatencyStats[userFuncPar]->addInFlightReq(msgId);
-                state.chainedInflights[chainedid]++;
+                // state.appChainedInflights[appId][chainedid]++;
             }
 
             // 3. We want to send the mappings for the _updated_ decision,
