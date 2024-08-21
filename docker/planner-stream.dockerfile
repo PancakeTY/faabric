@@ -18,4 +18,4 @@ RUN rm -rf /code \
     && inv dev.cmake --build=Release \
     && inv dev.cc planner_server
 
-ENTRYPOINT ["/code/faabric/bin/planner_entrypoint_stream.sh"]
+ENTRYPOINT ["/code/faabric/bin/planner_entrypoint.sh"]
