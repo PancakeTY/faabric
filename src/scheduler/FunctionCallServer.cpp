@@ -157,6 +157,8 @@ void FunctionCallServer::recvResetParameter(std::span<const uint8_t> buffer)
     SPDLOG_INFO("FunctionCall Server Resetting parameter {} to {}", key, value);
     if (key == "is_repartition") {
         faabric::scheduler::getScheduler().resetParameter(key, value);
+    } else if (key == "max_executors") {
+        faabric::scheduler::getScheduler().resetParameter(key, value);
     } else {
         throw std::runtime_error(
           fmt::format("Unrecognized parameter key: {}", key));

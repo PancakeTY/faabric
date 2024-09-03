@@ -547,6 +547,9 @@ void Scheduler::resetParameter(std::string key, int32_t value)
     if (key == "is_repartition") {
         isRepartition = value == 1;
         SPDLOG_INFO("Reset isRepartition parameter to : {}", isRepartition);
+    } else if (key == "max_executors") {
+        maxExecutors = value;
+        SPDLOG_INFO("Reset maxExecutors parameter to : {}", maxExecutors);
     } else {
         throw std::runtime_error(
           fmt::format("Unrecognized parameter key: {}", key));
@@ -591,9 +594,16 @@ bool Scheduler::executorAvailable(const std::string& funcStr)
             return true;
         }
     }
-    // If current size is less than the max size, we can return true.
+    // If current current replicas is less than the max size.
     if (thisExecutors.size() < maxReplicas) {
-        return true;
+        // If we have enough slots, we can return true.
+        int totalExecutors = 0;
+        for (const auto& pair : executors) {
+            totalExecutors += pair.second.size();
+        }
+        if (totalExecutors < maxExecutors) {
+            return true;
+        }
     }
     SPDLOG_TRACE("NO Available executor for {}", funcStr);
     return false;

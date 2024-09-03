@@ -485,6 +485,9 @@ void PlannerEndpointHandler::onRequest(
                         value);
             if (parameter == "max_inflight_reqs") {
                 maxInflightReqs = value;
+            }
+            else if (parameter == "max_executors"){
+                faabric::planner::getPlanner().resetParameter(parameter, value);
             } 
             else if (parameter == "is_repartition"){
                 faabric::planner::getPlanner().resetParameter(parameter, value);

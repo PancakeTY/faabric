@@ -171,7 +171,11 @@ class Scheduler
 
     std::atomic<bool> _isShutdown = false;
 
+    // Maximum number of replicas per function
     int maxReplicas = 8;
+
+    // Maximum number of concurrent executors in the worker
+    int maxExecutors = 40;
 
     bool isRepartition = true;
 
