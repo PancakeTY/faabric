@@ -91,6 +91,8 @@ class Planner
 
     faabric::batch_scheduler::InFlightReqs getInFlightReqs();
 
+    int getInFlightChainsSize();
+
     // Helper method to get the number of migrations that have happened since
     // the planner was last reset
     int getNumMigrations();
@@ -147,7 +149,6 @@ class Planner
     int parallelismUpdateInterval;
     bool isPreloadParallelism;
 
-    unsigned int chainedIdCounter = 0;
     // std::atomic<unsigned int> atomicChainedCounter{ 1 };
 
     // Snapshot registry to distribute snapshots in THREADS requests

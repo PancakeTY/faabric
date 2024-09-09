@@ -8,7 +8,7 @@ class PlannerEndpointHandler final
   , public std::enable_shared_from_this<PlannerEndpointHandler>
 {
   public:
-    int maxInflightReqs = 20;
+    int maxInflightReqs = 15000;
     void onRequest(faabric::endpoint::HttpRequestContext&& ctx,
                    faabric::util::BeastHttpRequest&& request) override;
 };

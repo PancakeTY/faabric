@@ -237,7 +237,7 @@ void PlannerEndpointHandler::onRequest(
             // For Request from the user, we will return false if the waiting
             // queue is too large.
             int numInFlight =
-              faabric::planner::getPlanner().getInFlightReqs().size();
+              faabric::planner::getPlanner().getInFlightChainsSize();
             if (numInFlight >= maxInflightReqs) {
                 response.result(beast::http::status::internal_server_error);
                 response.body() = "No available hosts";

@@ -38,6 +38,9 @@ struct PlannerState
     // Helper coutner of the total number of migrations
     std::atomic<int> numMigrations = 0;
 
+    // MAP<chainedId, in_flight_counting> Map of inflight chained requests.
+    std::map<int, int> inFlightChains;
+
     // The metrics for each function-parallelismId
     // Map<User-Function-ParallelismId, Metrics>
     // std::map<std::string, std::shared_ptr<FunctionLatency>> funcLatencyStats;
