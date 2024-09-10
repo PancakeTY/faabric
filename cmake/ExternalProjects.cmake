@@ -42,6 +42,7 @@ conan_cmake_configure(
         "readerwriterqueue/1.0.6@#a95c8da3d68822dec4d4c13fff4b5c96"
         "spdlog/1.10.0@#6406c337028e15e56cd6a070cbac54c4"
         "zlib/1.2.12@#3b9e037ae1c615d045a06c67d88491ae"
+        "rapidjson/cci.20211112@#65b4e5feb6f1edfc8cbac0f669acaf17"
     GENERATORS
         cmake_find_package
         cmake_paths
@@ -86,6 +87,7 @@ find_package(Protobuf 3.20.0 REQUIRED)
 find_package(readerwriterqueue REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(RapidJSON REQUIRED)
 
 # --------------------------------
 # Fetch content dependencies
@@ -151,6 +153,7 @@ target_link_libraries(faabric_common_dependencies INTERFACE
     spdlog::spdlog
     Threads::Threads
     zstd::libzstd_static
+    RapidJSON::RapidJSON
 )
 target_compile_definitions(faabric_common_dependencies INTERFACE
     FMT_DEPRECATED= # Suppress warnings about use of deprecated api by spdlog

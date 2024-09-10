@@ -533,6 +533,27 @@ void PlannerEndpointHandler::onRequest(
             }
             return ctx.sendFunction(std::move(response));
         }
+        case faabric::planner::HttpMessage_Type_OUTPUT_RESULT: {
+            SPDLOG_DEBUG("Planner received OUTPUT_RESULT request");
+            faabric::planner::EmptyRequest rawReq;
+            try {
+                faabric::util::jsonToMessage(msg.payloadjson(), &rawReq);
+            } catch (faabric::util::JsonSerialisationException e) {
+                response.result(beast::http::status::bad_request);
+                response.body() = std::string("Bad JSON in body's payload");
+                return ctx.sendFunction(std::move(response));
+            }
+            auto inFlightApps =
+              faabric::planner::getPlanner().getInFlightReqs();
+            if (inFlightApps.size() > 0){
+                SPDLOG_ERROR("In-flight apps are not empty, can not output result");
+                response.result(beast::http::status::internal_server_error);
+                response.body() = std::string("In-flight Request is not empty");
+                return ctx.sendFunction(std::move(response));
+            }
+            faabric::planner::getPlanner().outputAppResultsToJson();
+            return ctx.sendFunction(std::move(response));
+        }
         default: {
             SPDLOG_ERROR("Unrecognised message type {}", msg.type());
             response.result(beast::http::status::bad_request);

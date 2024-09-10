@@ -16,6 +16,13 @@
 #include <faabric/util/locks.h>
 #include <faabric/util/logging.h>
 
+#include <fstream>
+#include <map>
+#include <memory>
+#include <rapidjson/document.h>
+#include <rapidjson/prettywriter.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 #include <string>
 
 namespace faabric::planner {
@@ -30,13 +37,15 @@ namespace faabric::planner {
 //     assert(host->usedslots() <= host->slots());
 // }
 
-// static void releaseHostSlots(std::shared_ptr<Host> host, int slotsToRelease = 1)
+// static void releaseHostSlots(std::shared_ptr<Host> host, int slotsToRelease =
+// 1)
 // {
 //     host->set_usedslots(host->usedslots() - slotsToRelease);
 //     assert(host->usedslots() >= 0);
 // }
 
-// static void printHostState(std::map<std::string, std::shared_ptr<Host>> hostMap,
+// static void printHostState(std::map<std::string, std::shared_ptr<Host>>
+// hostMap,
 //                            const std::string& logLevel = "debug")
 // {
 //     std::string printedText;
@@ -302,8 +311,7 @@ bool Planner::isHostExpired(std::shared_ptr<Host> host, long epochTimeMs)
 
 void Planner::setMessageResult(std::shared_ptr<faabric::Message> msg,
                                bool locked)
-{
-}
+{}
 
 void Planner::setMessageResultWitoutLock(std::shared_ptr<faabric::Message> msg)
 {
@@ -359,7 +367,7 @@ void Planner::setMessageResultWitoutLock(std::shared_ptr<faabric::Message> msg)
             int parallelismId = msg->parallelismid();
             std::string userFuncPar =
               userFunc + "_" + std::to_string(parallelismId);
-            
+
             // Remove from in-flight chained requests
             int chainedId = msg->chainedid();
             state.inFlightChains[chainedId]--;
@@ -606,12 +614,12 @@ void Planner::enqueueCallBatch(std::shared_ptr<BatchExecuteRequest> req,
                 SPDLOG_ERROR("ChainedId {} is not running", chainedId);
                 throw std::runtime_error("Chained call id cannot be found");
             }
-            state.inFlightChains[chainedId] ++;
-        }
-        else {
+            state.inFlightChains[chainedId]++;
+        } else {
             if (state.inFlightChains.contains(chainedId)) {
                 SPDLOG_ERROR("ChainedId {} already exists", chainedId);
-                throw std::runtime_error("ChainedId already exists and running");
+                throw std::runtime_error(
+                  "ChainedId already exists and running");
             }
             state.inFlightChains[chainedId] = 1;
         }
@@ -718,7 +726,6 @@ void Planner::callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req)
                 // int msgId = tempMessage.id();
                 std::string userFuncPar =
                   userFunc + "_" + std::to_string(tempParallelisimId);
-
             }
             break;
         }
@@ -738,7 +745,7 @@ void Planner::callBatchWithoutLock(std::shared_ptr<BatchExecuteRequest> req)
 
 std::shared_ptr<faabric::batch_scheduler::SchedulingDecision>
 Planner::callBatch(std::shared_ptr<BatchExecuteRequest> req)
-{   
+{
     return nullptr;
 }
 
@@ -825,7 +832,8 @@ void Planner::dispatchSchedulingDecision(
                  req->messages_size());
 }
 
-int Planner::getInFlightChainsSize(){
+int Planner::getInFlightChainsSize()
+{
     return state.inFlightChains.size();
 }
 
@@ -927,15 +935,106 @@ bool Planner::resetParameter(const std::string& key, const int32_t value)
     req.set_value(value);
 
     for (const auto& host : availableHosts) {
-        SPDLOG_INFO("Planner reset {} parameter {} to {}", host->ip(), key, value);
+        SPDLOG_INFO(
+          "Planner reset {} parameter {} to {}", host->ip(), key, value);
         faabric::scheduler::getFunctionCallClient(host->ip())
-          ->resetParameter(std::make_shared<faabric::planner::ResetStreamParameterRequest>(
-            req));
+          ->resetParameter(
+            std::make_shared<faabric::planner::ResetStreamParameterRequest>(
+              req));
     }
 
     return true;
 }
 
+void Planner::outputAppResultsToJson()
+{
+    if (state.appResults.empty()) {
+        SPDLOG_INFO("No results to output");
+        return;
+    }
+
+    try {
+        rapidjson::Document document;
+        document.SetObject();
+        rapidjson::Document::AllocatorType& allocator = document.GetAllocator();
+
+        for (const auto& [appId, messages] : state.appResults) {
+            rapidjson::Value appData(rapidjson::kArrayType);
+            for (const auto& [messageId, message] : messages) {
+                rapidjson::Value messageData(rapidjson::kObjectType);
+
+                // Populate the messageData with the specified fields
+                messageData.AddMember("id", message->id(), allocator);
+                messageData.AddMember("appId", message->appid(), allocator);
+                messageData.AddMember(
+                  "user",
+                  rapidjson::StringRef(message->user().c_str()),
+                  allocator);
+                messageData.AddMember(
+                  "function",
+                  rapidjson::StringRef(message->function().c_str()),
+                  allocator);
+                messageData.AddMember(
+                  "output_data",
+                  rapidjson::StringRef(message->outputdata().c_str()),
+                  allocator);
+                messageData.AddMember(
+                  "start_ts", message->starttimestamp(), allocator);
+                messageData.AddMember(
+                  "finish_ts", message->finishtimestamp(), allocator);
+                messageData.AddMember(
+                  "plannerQueueTime", message->plannerqueuetime(), allocator);
+                messageData.AddMember(
+                  "plannerPopTime", message->plannerpoptime(), allocator);
+                messageData.AddMember("plannerDispatchTime",
+                                      message->plannerdispatchtime(),
+                                      allocator);
+                messageData.AddMember(
+                  "workerQueueTime", message->workerqueuetime(), allocator);
+                messageData.AddMember(
+                  "workerPopTime", message->workerpoptime(), allocator);
+                messageData.AddMember("ExecutorPrepareTime",
+                                      message->executorpreparetime(),
+                                      allocator);
+                messageData.AddMember("workerExecuteStart",
+                                      message->workerexecutestart(),
+                                      allocator);
+                messageData.AddMember(
+                  "workerExecuteEnd", message->workerexecuteend(), allocator);
+                messageData.AddMember(
+                  "chainedId", message->chainedid(), allocator);
+                messageData.AddMember(
+                  "parallelismId", message->parallelismid(), allocator);
+
+                appData.PushBack(messageData, allocator);
+            }
+            document.AddMember(
+              rapidjson::Value(std::to_string(appId).c_str(), allocator).Move(),
+              appData,
+              allocator);
+        }
+
+        // Write the JSON to file
+        rapidjson::StringBuffer buffer;
+        rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
+        document.Accept(writer);
+
+        std::ofstream outFile("/tmp/faasm_result.txt");
+        if (!outFile.is_open()) {
+            throw std::runtime_error("Unable to open output file");
+        }
+        outFile << buffer.GetString();
+        outFile.close();
+
+        SPDLOG_INFO("Successfully wrote results to /tmp/faasm_result.txt");
+    } catch (const std::exception& e) {
+        SPDLOG_ERROR("Error outputting results to JSON: {}", e.what());
+    } catch (...) {
+        SPDLOG_ERROR("Unknown error occurred while outputting results to JSON");
+    }
+
+    state.appResults.clear();
+}
 
 Planner& getPlanner()
 {

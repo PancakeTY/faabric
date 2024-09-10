@@ -125,6 +125,8 @@ class Planner
     // MAP<Function, MAP<metric, value>>
     std::map<std::string, FunctionMetrics> collectMetrics();
 
+    void outputAppResultsToJson();
+
   private:
     // There's a singleton instance of the planner running, but it must allow
     // concurrent requests

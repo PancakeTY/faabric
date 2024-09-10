@@ -51,6 +51,7 @@ message HttpMessage {
         RESET_REPLICAS_LIMIT = 16;
         RESET_STREAM_PARAMETER = 17;
         REGISTER_FUNCTION_STATE = 18;
+        OUTPUT_RESULT = 19;
     }
 
     Type type = 1 [json_name = "http_type"];
