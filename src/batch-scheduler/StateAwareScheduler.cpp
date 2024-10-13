@@ -555,9 +555,10 @@ StateAwareScheduler::increaseFunctionParallelism(
           std::make_shared<faabric::util::ConsistentHashRing>(
             functionParallelism[userFunction]);
         // Repartition the state in old stateHost.
-        if (oldPara != 0) {
-            repartitionParitionedState(userFunction, oldStateHostPtr);
-        }
+        // Temporarily removed. 
+        // if (oldPara != 0) {
+        //     repartitionParitionedState(userFunction, oldStateHostPtr);
+        // }
     }
     return oldStateHostPtr;
 }
