@@ -253,47 +253,6 @@ std::shared_ptr<FunctionState> State::doGetFunctionState(
     return targetFs;
 }
 
-size_t State::getParFuncStateSizeLock(const std::string& user,
-                                      const std::string& func,
-                                      int32_t parallelismId,
-                                      int version,
-                                      int start,
-                                      int end,
-                                      std::set<std::string>& keys)
-{
-    auto targetFs = doGetFunctionState(user, func, parallelismId);
-    targetFs->acquireRange(version, start, end);
-    return targetFs->readPartitionStateSize(keys);
-}
-
-void State::readParFuncState(const std::string& user,
-                             const std::string& func,
-                             int32_t parallelismId,
-                             char* buffer,
-                             std::set<std::string>& keys)
-{
-    auto targetFs = doGetFunctionState(user, func, parallelismId);
-
-    auto stateVec = targetFs->readPartitionState(keys);
-    // Copy it to the buffer
-    size_t stateLength = stateVec.size();
-    std::copy(stateVec.data(), stateVec.data() + stateLength, buffer);
-}
-
-void State::writeParFuncStateUnlock(const std::string& user,
-                                    const std::string& func,
-                                    int32_t parallelismId,
-                                    int version,
-                                    int start,
-                                    int end,
-                                    std::vector<uint8_t>& data)
-{
-    auto targetFs = doGetFunctionState(user, func, parallelismId);
-
-    targetFs->writePartitionState(data);
-    targetFs->releaseRange(version, start, end);
-}
-
 int State::getIndivFuncStateSizeLock(const std::string& user,
                                      const std::string& func,
                                      int32_t parallelismId,

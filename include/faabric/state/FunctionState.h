@@ -74,16 +74,8 @@ class FunctionState
     uint8_t* getChunk(long offset, long len);
     static uint32_t waitOnRedisRemoteLockFunc(const std::string& redisKey);
     static void clearAll(bool global);
-    // After receiving the repartition request from planner, it send its
-    // partition state to other state server.
-    // return false means this function state is no longer used.
-    bool rePartitionState(const std::string& newStateHost);
-    void addTempParState(const uint8_t* buffer, size_t length);
-    bool combineParState();
 
     // Local-Tier Parition State
-    void acquireRange(int version, int start, int end);
-    void releaseRange(int version, int start, int end);
     std::vector<uint8_t> readPartitionState(std::set<std::string>& keys);
     int readPartitionStateSize(std::set<std::string>& keys);
     void writePartitionState(std::vector<uint8_t>& states);
@@ -92,8 +84,6 @@ class FunctionState
                           uint8_t* buffer,
                           int acquireTimes);
     void writeIndivStateUnlocks(std::vector<uint8_t>& states);
-
-    faabric::util::RangeLock::LockInfo getLockInfo();
 
     /***
      * Fucntions related to the metrics
@@ -115,12 +105,7 @@ class FunctionState
     // starvation.
     std::counting_semaphore<1> sem;
 
-    std::mutex mx;
-
-    // It must be same as scheduler.h
-    int hashGranularity = 100;
-    // For partitioned state, we use range lock
-    faabric::util::RangeLock rangeLock;
+    std::mutex funcStateMutex;
 
     faabric::util::MultiKeyLock multiKeyLock;
     std::map<std::string, IndivState> indivStateMap;

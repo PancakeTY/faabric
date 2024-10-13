@@ -337,13 +337,7 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionRepartition(
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
 
-    FS_ONLY_FROM_REQUEST(parsedMsg)
-    bool result = fs->rePartitionState(parsedMsg.newparitionmap());
-    if (!result) {
-        state.deleteFS(
-          parsedMsg.user(), parsedMsg.func(), parsedMsg.parallelismid());
-    }
-    // No information is needed by response
+    throw std::runtime_error("Function unimplemented");
     auto response = std::make_unique<faabric::StateResponse>();
     return response;
 }
@@ -359,15 +353,8 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionParAdd(
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
     FS_ONLY_FROM_REQUEST(parsedMsg)
-    // Scheduler created the Function State at first, so it should not be null
-    if (fs == nullptr) {
-        throw std::runtime_error("StateServer receive add request, but state "
-                                 "is not found or not master");
-    }
-    auto reqData = BYTES_CONST(parsedMsg.data().c_str());
-    // Add data in tmp position to avoid locking.
-    fs->addTempParState(reqData, parsedMsg.data().size());
-    // No information is needed by response
+    throw std::runtime_error("Function unimplemented");
+
     auto response = std::make_unique<faabric::StateResponse>();
     return response;
 }
@@ -380,8 +367,8 @@ std::unique_ptr<google::protobuf::Message> StateServer::recvFunctionParCombine(
                  parsedMsg.user(),
                  parsedMsg.func(),
                  parsedMsg.parallelismid());
-    FS_ONLY_FROM_REQUEST(parsedMsg)
-    fs->combineParState();
+    throw std::runtime_error("Function unimplemented");
+
     // No information is needed by response
     auto response = std::make_unique<faabric::StateResponse>();
     return response;
